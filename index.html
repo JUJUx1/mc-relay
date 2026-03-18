@@ -1,0 +1,2220 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Bedrock Auto Builder</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/pako/2.1.0/pako.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Press+Start+2P&family=Share+Tech+Mono&display=swap');
+
+  :root {
+    --grass: #5d9e3f;
+    --dirt: #8B6340;
+    --stone: #7a7a7a;
+    --sky: #87CEEB;
+    --dark: #0d0f0e;
+    --panel: #1a1f1b;
+    --border: #3a4a3a;
+    --accent: #5d9e3f;
+    --gold: #FFD700;
+    --red: #e74c3c;
+    --text: #d4e8c2;
+    --dim: #7a9a6a;
+  }
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    background: var(--dark);
+    color: var(--text);
+    font-family: 'Share Tech Mono', monospace;
+    min-height: 100vh;
+    overflow-x: hidden;
+  }
+
+  /* Pixelated background pattern */
+  body::before {
+    content: '';
+    position: fixed;
+    inset: 0;
+    background-image:
+      linear-gradient(rgba(93,158,63,0.03) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(93,158,63,0.03) 1px, transparent 1px);
+    background-size: 32px 32px;
+    pointer-events: none;
+    z-index: 0;
+  }
+
+  .app {
+    position: relative;
+    z-index: 1;
+    max-width: 1200px;
+    margin: 0 auto;
+    padding: 24px;
+  }
+
+  /* Header */
+  header {
+    text-align: center;
+    margin-bottom: 32px;
+    padding: 32px 0 24px;
+    border-bottom: 2px solid var(--border);
+    position: relative;
+  }
+
+  .logo {
+    font-family: 'Press Start 2P', monospace;
+    font-size: clamp(14px, 3vw, 22px);
+    color: var(--gold);
+    text-shadow: 3px 3px 0 #8B6340, 6px 6px 0 rgba(0,0,0,0.5);
+    letter-spacing: 2px;
+    line-height: 1.6;
+    margin-bottom: 12px;
+  }
+
+  .tagline {
+    color: var(--dim);
+    font-size: 12px;
+    letter-spacing: 3px;
+    text-transform: uppercase;
+  }
+
+  .badge {
+    display: inline-block;
+    background: var(--grass);
+    color: #fff;
+    font-size: 9px;
+    font-family: 'Press Start 2P', monospace;
+    padding: 4px 10px;
+    margin-top: 10px;
+    clip-path: polygon(4px 0%, calc(100% - 4px) 0%, 100% 4px, 100% calc(100% - 4px), calc(100% - 4px) 100%, 4px 100%, 0% calc(100% - 4px), 0% 4px);
+  }
+
+  /* Layout */
+  .grid {
+    display: grid;
+    grid-template-columns: 340px 1fr;
+    gap: 20px;
+    align-items: start;
+  }
+
+  @media (max-width: 768px) {
+    .grid { grid-template-columns: 1fr; }
+  }
+
+  /* Panels */
+  .panel {
+    background: var(--panel);
+    border: 2px solid var(--border);
+    border-radius: 0;
+    clip-path: polygon(0 0, calc(100% - 8px) 0, 100% 8px, 100% 100%, 8px 100%, 0 calc(100% - 8px));
+    overflow: hidden;
+  }
+
+  .panel-header {
+    background: var(--border);
+    padding: 10px 16px;
+    font-family: 'Press Start 2P', monospace;
+    font-size: 9px;
+    color: var(--gold);
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    letter-spacing: 1px;
+  }
+
+  .panel-header .icon { font-size: 14px; }
+  .panel-body { padding: 16px; }
+
+  /* Upload zone */
+  .upload-zone {
+    border: 2px dashed var(--border);
+    padding: 32px 16px;
+    text-align: center;
+    cursor: pointer;
+    transition: all 0.2s;
+    position: relative;
+    background: rgba(93,158,63,0.03);
+  }
+
+  .upload-zone:hover, .upload-zone.drag-over {
+    border-color: var(--accent);
+    background: rgba(93,158,63,0.08);
+  }
+
+  .upload-zone input { display: none; }
+
+  .upload-icon {
+    font-size: 40px;
+    display: block;
+    margin-bottom: 12px;
+    filter: grayscale(0.3);
+  }
+
+  .upload-label {
+    font-family: 'Press Start 2P', monospace;
+    font-size: 8px;
+    color: var(--accent);
+    display: block;
+    margin-bottom: 8px;
+    line-height: 1.8;
+  }
+
+  .upload-hint {
+    font-size: 11px;
+    color: var(--dim);
+  }
+
+  /* Stats */
+  .stats-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 8px;
+    margin-top: 16px;
+  }
+
+  .stat-box {
+    background: rgba(0,0,0,0.3);
+    border: 1px solid var(--border);
+    padding: 10px;
+    text-align: center;
+  }
+
+  .stat-val {
+    font-family: 'Press Start 2P', monospace;
+    font-size: 14px;
+    color: var(--gold);
+    display: block;
+    margin-bottom: 4px;
+  }
+
+  .stat-lbl {
+    font-size: 9px;
+    color: var(--dim);
+    text-transform: uppercase;
+    letter-spacing: 1px;
+  }
+
+  /* Block palette */
+  .palette {
+    margin-top: 16px;
+  }
+
+  .palette-title {
+    font-family: 'Press Start 2P', monospace;
+    font-size: 8px;
+    color: var(--dim);
+    margin-bottom: 10px;
+    letter-spacing: 1px;
+  }
+
+  .palette-list {
+    max-height: 200px;
+    overflow-y: auto;
+    scrollbar-width: thin;
+    scrollbar-color: var(--border) transparent;
+  }
+
+  .block-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 5px 0;
+    border-bottom: 1px solid rgba(58,74,58,0.3);
+    font-size: 11px;
+  }
+
+  .block-swatch {
+    width: 16px;
+    height: 16px;
+    border: 1px solid rgba(255,255,255,0.2);
+    flex-shrink: 0;
+    image-rendering: pixelated;
+  }
+
+  .block-name { flex: 1; color: var(--text); }
+  .block-count { color: var(--dim); font-size: 10px; }
+
+  /* Export options */
+  .export-opts {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    margin-top: 16px;
+  }
+
+  .opt-row {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 10px;
+    border: 1px solid var(--border);
+    cursor: pointer;
+    transition: all 0.15s;
+    background: rgba(0,0,0,0.2);
+  }
+
+  .opt-row:hover { border-color: var(--accent); background: rgba(93,158,63,0.07); }
+  .opt-row.selected { border-color: var(--gold); background: rgba(255,215,0,0.07); }
+
+  .opt-radio {
+    width: 12px; height: 12px;
+    border: 2px solid var(--dim);
+    display: flex; align-items: center; justify-content: center;
+    flex-shrink: 0;
+  }
+
+  .opt-row.selected .opt-radio { border-color: var(--gold); }
+  .opt-radio-dot { width: 6px; height: 6px; background: var(--gold); display: none; }
+  .opt-row.selected .opt-radio-dot { display: block; }
+
+  .opt-info { flex: 1; }
+  .opt-name { font-family: 'Press Start 2P', monospace; font-size: 8px; color: var(--text); margin-bottom: 3px; }
+  .opt-desc { font-size: 10px; color: var(--dim); line-height: 1.4; }
+
+  /* Buttons */
+  .btn {
+    font-family: 'Press Start 2P', monospace;
+    font-size: 9px;
+    padding: 12px 20px;
+    border: none;
+    cursor: pointer;
+    letter-spacing: 1px;
+    transition: all 0.1s;
+    width: 100%;
+    margin-top: 12px;
+    position: relative;
+    clip-path: polygon(0 0, calc(100% - 6px) 0, 100% 6px, 100% 100%, 6px 100%, 0 calc(100% - 6px));
+  }
+
+  .btn-primary {
+    background: var(--grass);
+    color: #fff;
+    text-shadow: 1px 1px 0 rgba(0,0,0,0.5);
+    box-shadow: inset 0 -4px 0 rgba(0,0,0,0.3);
+  }
+
+  .btn-primary:hover { background: #6db34a; transform: translateY(-1px); }
+  .btn-primary:active { transform: translateY(1px); box-shadow: none; }
+  .btn-primary:disabled { background: var(--border); color: var(--dim); cursor: not-allowed; transform: none; }
+
+  .btn-secondary {
+    background: transparent;
+    color: var(--dim);
+    border: 2px solid var(--border);
+    margin-top: 6px;
+  }
+
+  .btn-secondary:hover { border-color: var(--accent); color: var(--text); }
+
+  /* 3D Viewer */
+  #viewer-canvas {
+    width: 100%;
+    aspect-ratio: 4/3;
+    background: linear-gradient(180deg, #1a2a3a 0%, #0d1a2a 100%);
+    display: block;
+    cursor: grab;
+  }
+
+  #viewer-canvas:active { cursor: grabbing; }
+
+  .viewer-controls {
+    display: flex;
+    gap: 8px;
+    padding: 10px;
+    background: rgba(0,0,0,0.3);
+    border-top: 1px solid var(--border);
+    font-size: 10px;
+    color: var(--dim);
+    align-items: center;
+    flex-wrap: wrap;
+  }
+
+  .ctrl-hint { display: flex; align-items: center; gap: 4px; }
+  .kbd {
+    background: var(--border);
+    padding: 2px 5px;
+    font-size: 9px;
+    color: var(--text);
+  }
+
+  /* Log */
+  .log {
+    background: rgba(0,0,0,0.4);
+    border: 1px solid var(--border);
+    padding: 10px;
+    font-size: 10px;
+    height: 100px;
+    overflow-y: auto;
+    margin-top: 12px;
+    scrollbar-width: thin;
+    scrollbar-color: var(--border) transparent;
+  }
+
+  .log-line { padding: 2px 0; line-height: 1.5; }
+  .log-line.info { color: var(--text); }
+  .log-line.ok { color: var(--accent); }
+  .log-line.warn { color: var(--gold); }
+  .log-line.err { color: var(--red); }
+
+  /* Progress */
+  .progress-bar {
+    height: 6px;
+    background: var(--border);
+    margin-top: 8px;
+    overflow: hidden;
+  }
+
+  .progress-fill {
+    height: 100%;
+    background: linear-gradient(90deg, var(--accent), var(--gold));
+    width: 0%;
+    transition: width 0.3s;
+  }
+
+  /* Instructions */
+  .instructions {
+    margin-top: 20px;
+    padding: 16px;
+    background: rgba(255,215,0,0.05);
+    border: 1px solid rgba(255,215,0,0.2);
+  }
+
+  .instructions h3 {
+    font-family: 'Press Start 2P', monospace;
+    font-size: 8px;
+    color: var(--gold);
+    margin-bottom: 12px;
+    letter-spacing: 1px;
+  }
+
+  .step-list { list-style: none; counter-reset: steps; }
+  .step-list li {
+    counter-increment: steps;
+    padding: 6px 0 6px 28px;
+    position: relative;
+    font-size: 11px;
+    color: var(--dim);
+    border-bottom: 1px solid rgba(58,74,58,0.2);
+    line-height: 1.5;
+  }
+
+  .step-list li::before {
+    content: counter(steps);
+    position: absolute;
+    left: 0;
+    font-family: 'Press Start 2P', monospace;
+    font-size: 8px;
+    color: var(--accent);
+    background: rgba(93,158,63,0.15);
+    width: 18px;
+    height: 18px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    top: 6px;
+  }
+
+  /* Placeholder state */
+  .viewer-placeholder {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    height: 300px;
+    color: var(--dim);
+    gap: 12px;
+    background: linear-gradient(180deg, #1a2a3a 0%, #0d1a2a 100%);
+  }
+
+  .placeholder-icon {
+    font-size: 48px;
+    opacity: 0.3;
+    animation: float 3s ease-in-out infinite;
+  }
+
+  @keyframes float {
+    0%, 100% { transform: translateY(0); }
+    50% { transform: translateY(-8px); }
+  }
+
+  .placeholder-text {
+    font-family: 'Press Start 2P', monospace;
+    font-size: 8px;
+    color: var(--dim);
+    text-align: center;
+    line-height: 2;
+  }
+
+  /* Notification */
+  .notif {
+    position: fixed;
+    top: 20px;
+    right: 20px;
+    background: var(--grass);
+    color: #fff;
+    padding: 12px 20px;
+    font-family: 'Press Start 2P', monospace;
+    font-size: 9px;
+    z-index: 1000;
+    clip-path: polygon(0 0, calc(100% - 6px) 0, 100% 6px, 100% 100%, 6px 100%, 0 calc(100% - 6px));
+    transform: translateX(200%);
+    transition: transform 0.3s;
+    line-height: 1.8;
+  }
+  .notif.show { transform: translateX(0); }
+  .notif.error { background: var(--red); }
+
+  /* Layer slider */
+  .layer-ctrl {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 8px;
+    background: rgba(0,0,0,0.2);
+    border-top: 1px solid var(--border);
+    font-size: 10px;
+    color: var(--dim);
+  }
+
+  .layer-ctrl input[type=range] {
+    flex: 1;
+    accent-color: var(--accent);
+    height: 4px;
+  }
+
+  .layer-val {
+    font-family: 'Press Start 2P', monospace;
+    font-size: 9px;
+    color: var(--gold);
+    min-width: 30px;
+    text-align: right;
+  }
+
+  footer {
+    text-align: center;
+    padding: 24px 0;
+    color: var(--dim);
+    font-size: 10px;
+    border-top: 1px solid var(--border);
+    margin-top: 32px;
+    line-height: 2;
+  }
+
+  /* WebSocket panel */
+  .ws-status {
+    display: flex; align-items: center; gap: 8px;
+    padding: 10px; border: 1px solid var(--border);
+    margin-bottom: 10px; background: rgba(0,0,0,0.3);
+  }
+  .ws-dot {
+    width: 10px; height: 10px; border-radius: 0;
+    background: var(--border); flex-shrink: 0;
+    transition: background 0.3s;
+  }
+  .ws-dot.connected { background: var(--accent); box-shadow: 0 0 6px var(--accent); }
+  .ws-dot.connecting { background: var(--gold); animation: pulse 0.8s infinite; }
+  .ws-dot.error { background: var(--red); }
+  @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:0.3} }
+  .ws-label { font-size: 10px; color: var(--dim); flex:1; }
+  .ws-label b { color: var(--text); }
+
+  .build-progress {
+    margin-top: 10px; display: none;
+  }
+  .build-progress-bar {
+    height: 8px; background: var(--border); position: relative; overflow: hidden;
+  }
+  .build-progress-fill {
+    height: 100%; background: linear-gradient(90deg, var(--accent), var(--gold));
+    width: 0%; transition: width 0.2s;
+    position: relative;
+  }
+  .build-progress-fill::after {
+    content: ''; position: absolute; right: 0; top: 0; bottom: 0;
+    width: 20px; background: rgba(255,255,255,0.3);
+    animation: shimmer 0.5s infinite;
+  }
+  @keyframes shimmer { 0%{opacity:0} 50%{opacity:1} 100%{opacity:0} }
+  .build-stats-row {
+    display: flex; justify-content: space-between;
+    font-size: 10px; color: var(--dim); margin-top: 6px;
+  }
+  .build-stats-row b { color: var(--gold); font-family: 'Press Start 2P', monospace; font-size: 9px; }
+
+  .speed-row {
+    display: flex; align-items: center; gap: 8px;
+    font-size: 10px; color: var(--dim); margin-top: 8px;
+  }
+  .speed-row input[type=range] { flex:1; accent-color: var(--accent); }
+
+  .tab-row {
+    display: flex; border-bottom: 2px solid var(--border); margin-bottom: 0;
+  }
+  .tab {
+    flex: 1; padding: 9px 4px; text-align: center;
+    font-family: 'Press Start 2P', monospace; font-size: 7px;
+    color: var(--dim); cursor: pointer; border: none; background: none;
+    border-bottom: 2px solid transparent; margin-bottom: -2px;
+    transition: all 0.15s; letter-spacing: 0.5px;
+  }
+  .tab:hover { color: var(--text); }
+  .tab.active { color: var(--gold); border-bottom-color: var(--gold); }
+  .tab-content { display: none; padding: 14px; }
+  .tab-content.active { display: block; }
+
+  .bp-step {
+    display: flex; gap: 10px; padding: 8px 0;
+    border-bottom: 1px solid rgba(58,74,58,0.3); align-items: flex-start;
+  }
+  .bp-num {
+    font-family: 'Press Start 2P', monospace; font-size: 8px;
+    color: var(--accent); background: rgba(93,158,63,0.15);
+    width: 20px; height: 20px; display: flex; align-items: center;
+    justify-content: center; flex-shrink: 0; margin-top: 1px;
+  }
+  .bp-text { font-size: 11px; color: var(--dim); line-height: 1.6; }
+  .bp-text code { color: var(--gold); font-family: 'Share Tech Mono', monospace; }
+  .bp-text b { color: var(--text); }
+
+  .input-row {
+    display: flex; gap: 6px; align-items: center; margin-top: 8px;
+  }
+  .input-row input[type=text], .input-row input[type=number] {
+    flex: 1; background: #111; border: 1px solid var(--border);
+    color: var(--text); padding: 7px 8px; font-family: 'Share Tech Mono', monospace;
+    font-size: 11px;
+  }
+  .input-row input:focus { outline: none; border-color: var(--accent); }
+  .btn-sm {
+    font-family: 'Press Start 2P', monospace; font-size: 7px;
+    padding: 8px 10px; border: none; cursor: pointer;
+    background: var(--accent); color: #fff; white-space: nowrap;
+    clip-path: polygon(0 0, calc(100% - 4px) 0, 100% 4px, 100% 100%, 4px 100%, 0 calc(100% - 4px));
+  }
+  .btn-sm:hover { background: #6db34a; }
+  .btn-sm:disabled { background: var(--border); color: var(--dim); cursor: not-allowed; }
+  .btn-danger { background: var(--red); }
+  .btn-danger:hover { background: #f05545; }
+
+</style>
+</head>
+<body>
+<div class="app">
+  <header>
+    <div class="logo">⛏ BEDROCK AUTO BUILDER ⛏</div>
+    <div class="tagline">Schematic → .mcstructure converter</div>
+    <div class="badge">BEDROCK EDITION</div>
+  </header>
+
+  <div class="grid">
+    <!-- Left: Controls -->
+    <div>
+      <div class="panel">
+        <div class="panel-header"><span class="icon">📁</span> LOAD SCHEMATIC</div>
+        <div class="panel-body">
+          <div class="upload-zone" id="uploadZone">
+            <input type="file" id="fileInput" accept=".schematic,.schem,.nbt,.litematic">
+            <span class="upload-icon">🧱</span>
+            <span class="upload-label">DROP FILE HERE<br>OR CLICK TO BROWSE</span>
+            <span class="upload-hint">.schematic · .schem · .nbt · .litematic</span>
+          </div>
+
+          <div class="stats-grid" id="statsGrid" style="display:none">
+            <div class="stat-box">
+              <span class="stat-val" id="statX">-</span>
+              <span class="stat-lbl">Width X</span>
+            </div>
+            <div class="stat-box">
+              <span class="stat-val" id="statY">-</span>
+              <span class="stat-lbl">Height Y</span>
+            </div>
+            <div class="stat-box">
+              <span class="stat-val" id="statZ">-</span>
+              <span class="stat-lbl">Length Z</span>
+            </div>
+            <div class="stat-box">
+              <span class="stat-val" id="statBlocks">-</span>
+              <span class="stat-lbl">Blocks</span>
+            </div>
+          </div>
+
+          <div class="palette" id="paletteSection" style="display:none">
+            <div class="palette-title">▸ BLOCK PALETTE</div>
+            <div class="palette-list" id="paletteList"></div>
+          </div>
+        </div>
+      </div>
+
+      <div class="panel" style="margin-top:16px">
+        <div class="panel-header"><span class="icon">⚡</span> BUILD MODE</div>
+
+        <!-- Offset row shared by all tabs -->
+        <div style="padding:10px 14px 0; display:flex; gap:8px; align-items:center; font-size:10px; color:var(--dim)">
+          <b style="color:var(--text)">ORIGIN:</b>
+          <span>X</span><input id="offX" type="number" value="0" style="width:54px;background:#111;border:1px solid var(--border);color:var(--text);padding:4px 6px;font-family:inherit;font-size:11px">
+          <span>Y</span><input id="offY" type="number" value="0" style="width:54px;background:#111;border:1px solid var(--border);color:var(--text);padding:4px 6px;font-family:inherit;font-size:11px">
+          <span>Z</span><input id="offZ" type="number" value="0" style="width:54px;background:#111;border:1px solid var(--border);color:var(--text);padding:4px 6px;font-family:inherit;font-size:11px">
+        </div>
+
+        <div class="tab-row" style="margin-top:10px">
+          <button class="tab active" onclick="switchTab('export',this)">📦 EXPORT</button>
+          <button class="tab" onclick="switchTab('websocket',this)">🔌 LIVE BUILD</button>
+          <button class="tab" onclick="switchTab('behaviorpack',this)">🗂 PACK</button>
+        </div>
+
+        <!-- TAB: Export -->
+        <div class="tab-content active" id="tab-export">
+          <div class="export-opts">
+            <div class="opt-row selected" data-fmt="mcstructure" onclick="selectFormat(this)">
+              <div class="opt-radio"><div class="opt-radio-dot"></div></div>
+              <div class="opt-info">
+                <div class="opt-name">.mcstructure</div>
+                <div class="opt-desc">Native Bedrock — load instantly with a Structure Block. No commands needed.</div>
+              </div>
+            </div>
+            <div class="opt-row" data-fmt="mcfunction" onclick="selectFormat(this)">
+              <div class="opt-radio"><div class="opt-radio-dot"></div></div>
+              <div class="opt-info">
+                <div class="opt-name">.mcfunction</div>
+                <div class="opt-desc">Raw /setblock command list. Drop into any Behavior Pack and run with /function.</div>
+              </div>
+            </div>
+          </div>
+          <button class="btn btn-primary" id="exportBtn" disabled onclick="exportFile()">▶ GENERATE FILE</button>
+          <button class="btn btn-secondary" id="resetBtn" onclick="resetAll()">↩ RESET</button>
+          <div class="progress-bar"><div class="progress-fill" id="progressFill"></div></div>
+
+          <div style="margin-top:14px">
+            <div class="bp-step"><div class="bp-num">1</div><div class="bp-text">Export as <b>.mcstructure</b></div></div>
+            <div class="bp-step"><div class="bp-num">2</div><div class="bp-text">Copy to <code>games/com.mojang/structures/</code></div></div>
+            <div class="bp-step"><div class="bp-num">3</div><div class="bp-text">Place a <b>Structure Block</b> → mode LOAD → enter filename</div></div>
+            <div class="bp-step" style="border:none"><div class="bp-num">4</div><div class="bp-text">Hit <b>Load</b> — instant build! 🎉</div></div>
+          </div>
+        </div>
+
+        <!-- TAB: WebSocket Live Build -->
+        <div class="tab-content" id="tab-websocket">
+          <div class="ws-status">
+            <div class="ws-dot" id="wsDot"></div>
+            <div class="ws-label" id="wsLabel"><b>Disconnected</b></div>
+          </div>
+
+          <!-- Mode toggle -->
+          <div style="display:flex;gap:6px;margin-bottom:12px">
+            <button class="btn-sm" id="modeLocalBtn" onclick="setWsMode('local')" style="flex:1;background:var(--accent);color:#fff">📱 TERMUX (LOCAL)</button>
+            <button class="btn-sm" id="modeRelayBtn" onclick="setWsMode('relay')" style="flex:1;background:var(--border);color:var(--dim)">☁ RELAY (URL)</button>
+          </div>
+
+          <!-- Termux / Local mode -->
+          <div id="localPanel">
+            <div style="background:rgba(93,158,63,0.07);border:1px solid rgba(93,158,63,0.2);padding:10px;margin-bottom:10px;font-size:10px;color:var(--dim);line-height:1.8">
+              <b style="color:var(--accent)">Termux is running?</b> Connect below.<br>
+              Then in Minecraft chat run:<br>
+              <code style="color:var(--gold);font-size:12px">/wsserver localhost:19131?session=build1</code>
+            </div>
+            <div style="font-size:10px;color:var(--dim);margin-bottom:6px">Session ID:</div>
+            <div class="input-row" style="margin-bottom:4px">
+              <input type="text" id="wsSession" value="build1" style="width:100px;flex:none">
+              <button class="btn-sm" onclick="randomSessionLocal()" style="background:var(--border);color:var(--text)">🎲</button>
+              <span style="font-size:10px;color:var(--dim);margin-left:4px">Port: 19131</span>
+            </div>
+            <div id="mcCommandLocal" style="background:rgba(0,0,0,0.4);border:1px solid var(--border);border-left:3px solid var(--gold);padding:8px;font-size:10px;margin-top:8px">
+              <div style="color:var(--dim);font-size:9px;margin-bottom:3px;font-family:'Press Start 2P',monospace">▸ RUN IN MINECRAFT CHAT:</div>
+              <code id="mcCommandLocalText" style="color:var(--gold);font-size:12px">/wsserver localhost:19131?session=build1</code>
+            </div>
+          </div>
+
+          <!-- Relay / Custom URL mode -->
+          <div id="relayPanel" style="display:none">
+            <div style="font-size:10px;color:var(--dim);margin-bottom:8px;line-height:1.7">
+              Enter a custom WebSocket server URL.<br>
+              <b style="color:var(--text)">Must be plain ws:// — not wss://</b>
+            </div>
+            <div style="font-size:10px;color:var(--dim);margin-bottom:4px">Server URL:</div>
+            <div class="input-row" style="margin-bottom:6px">
+              <input type="text" id="relayUrl" placeholder="ws://your-server:19131" style="font-size:10px">
+            </div>
+            <div style="font-size:10px;color:var(--dim);margin-bottom:4px">Session ID:</div>
+            <div class="input-row" style="margin-bottom:8px">
+              <input type="text" id="sessionId" value="build1" style="width:100px;flex:none">
+              <button class="btn-sm" onclick="randomSession()" style="background:var(--border);color:var(--text)">🎲</button>
+            </div>
+            <div id="mcCommand" style="background:rgba(0,0,0,0.4);border:1px solid var(--border);border-left:3px solid var(--gold);padding:8px;font-size:10px;display:none">
+              <div style="color:var(--dim);font-size:9px;margin-bottom:3px;font-family:'Press Start 2P',monospace">▸ RUN IN MINECRAFT CHAT:</div>
+              <code id="mcCommandText" style="color:var(--gold);font-size:12px;word-break:break-all"></code>
+            </div>
+          </div>
+
+          <div class="input-row" style="margin-top:10px">
+            <button class="btn-sm" id="wsConnectBtn" onclick="wsConnect()" style="flex:1;font-size:8px">⚡ CONNECT</button>
+            <button class="btn-sm btn-danger" id="wsDisconnectBtn" onclick="wsDisconnect()" style="display:none;flex:1;font-size:8px">✕ DISCONNECT</button>
+          </div>
+
+          <div class="speed-row" style="margin-top:10px">
+            <span>SPEED:</span>
+            <input type="range" id="buildSpeed" min="1" max="10" value="5">
+            <span id="speedLabel" style="color:var(--gold);font-family:'Press Start 2P',monospace;font-size:8px;min-width:40px">MED</span>
+          </div>
+          <div style="font-size:9px;color:var(--dim);margin-top:2px" id="speedDesc">~50 blocks/sec — balanced</div>
+
+          <div class="build-progress" id="buildProgress">
+            <div class="build-progress-bar"><div class="build-progress-fill" id="buildFill"></div></div>
+            <div class="build-stats-row">
+              <span>PLACED: <b id="bPlaced">0</b></span>
+              <span>TOTAL: <b id="bTotal">0</b></span>
+              <span>ETA: <b id="bEta">--</b></span>
+            </div>
+          </div>
+
+          <button class="btn btn-primary" id="liveBtn" disabled onclick="startLiveBuild()" style="margin-top:10px">▶ START AUTO BUILD</button>
+          <button class="btn btn-secondary" id="stopBtn" onclick="stopLiveBuild()" style="display:none;margin-top:6px">⏹ STOP</button>
+        </div>
+
+                <!-- TAB: Behavior Pack -->
+        <div class="tab-content" id="tab-behaviorpack">
+          <div style="font-size:10px;color:var(--dim);margin-bottom:12px;line-height:1.7">
+            Generates a <b style="color:var(--text)">complete Behavior Pack</b> that auto-runs when the world loads.
+            No commands needed — just import and play.
+          </div>
+
+          <div class="input-row" style="margin-bottom:10px">
+            <span style="font-size:10px;color:var(--dim);white-space:nowrap">Pack name:</span>
+            <input type="text" id="packName" value="AutoBuilder" placeholder="MyBuild">
+          </div>
+
+          <div style="font-size:10px;color:var(--dim);margin-bottom:10px">
+            <label style="display:flex;align-items:center;gap:6px;cursor:pointer">
+              <input type="checkbox" id="chkTickJson" checked style="accent-color:var(--accent)">
+              Auto-run on world load (tick.json)
+            </label>
+            <label style="display:flex;align-items:center;gap:6px;cursor:pointer;margin-top:4px">
+              <input type="checkbox" id="chkBatched" checked style="accent-color:var(--accent)">
+              Batch into multiple functions (avoids command limit)
+            </label>
+          </div>
+
+          <button class="btn btn-primary" id="bpBtn" disabled onclick="exportBehaviorPack()">📦 EXPORT BEHAVIOR PACK</button>
+          <div class="progress-bar" style="margin-top:8px"><div class="progress-fill" id="bpProgressFill"></div></div>
+
+          <div style="margin-top:14px">
+            <div class="bp-step"><div class="bp-num">1</div><div class="bp-text">Export the pack ZIP</div></div>
+            <div class="bp-step"><div class="bp-num">2</div><div class="bp-text">Open Minecraft → <b>Settings → Storage</b> → import the <code>.zip</code> as a Behavior Pack</div></div>
+            <div class="bp-step"><div class="bp-num">3</div><div class="bp-text">Create/open a world, enable the pack under <b>Behavior Packs</b></div></div>
+            <div class="bp-step" style="border:none"><div class="bp-num">4</div><div class="bp-text">Load the world — blocks place automatically on tick! ⚡</div></div>
+          </div>
+        </div>
+
+      </div>
+    </div>
+
+    <!-- Right: Viewer -->
+    <div>
+      <div class="panel">
+        <div class="panel-header"><span class="icon">🎮</span> 3D PREVIEW</div>
+        <div id="viewerWrap">
+          <div class="viewer-placeholder" id="placeholder">
+            <div class="placeholder-icon">🧊</div>
+            <div class="placeholder-text">NO STRUCTURE LOADED<br>UPLOAD A FILE TO PREVIEW</div>
+          </div>
+          <canvas id="viewer-canvas" style="display:none"></canvas>
+        </div>
+        <div class="layer-ctrl" id="layerCtrl" style="display:none">
+          <span>LAYER:</span>
+          <input type="range" id="layerSlider" min="0" value="0" oninput="updateLayerSlice(this.value)">
+          <span class="layer-val" id="layerVal">ALL</span>
+          <label style="display:flex;align-items:center;gap:4px;cursor:pointer">
+            <input type="checkbox" id="layerAll" checked onchange="toggleAllLayers(this.checked)" style="accent-color:var(--accent)"> ALL
+          </label>
+        </div>
+        <div class="viewer-controls">
+          <span class="ctrl-hint"><span class="kbd">DRAG</span> Orbit</span>
+          <span class="ctrl-hint"><span class="kbd">SCROLL</span> Zoom</span>
+          <span class="ctrl-hint"><span class="kbd">RIGHT DRAG</span> Pan</span>
+        </div>
+      </div>
+
+      <div class="panel" style="margin-top:16px">
+        <div class="panel-header"><span class="icon">📋</span> LOG</div>
+        <div class="panel-body" style="padding:0">
+          <div class="log" id="log">
+            <div class="log-line info">▸ Bedrock Auto Builder ready.</div>
+            <div class="log-line info">▸ Supports .schematic, .schem (Sponge v1/v2/v3), .nbt (Java), .litematic</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+  <footer>
+    BEDROCK AUTO BUILDER · Not affiliated with Mojang/Microsoft<br>
+    All processing done locally in your browser · No data uploaded
+  </footer>
+</div>
+
+<div class="notif" id="notif"></div>
+
+<script>
+// ============================================================
+// NBT Parser
+// ============================================================
+const TAG = { End:0, Byte:1, Short:2, Int:3, Long:4, Float:5, Double:6, ByteArray:7, String:8, List:9, Compound:10, IntArray:11, LongArray:12 };
+
+function parseNBT(buffer) {
+  const view = new DataView(buffer);
+  let pos = 0;
+
+  function readByte() { return view.getInt8(pos++); }
+  function readUByte() { return view.getUint8(pos++); }
+  function readShort() { const v = view.getInt16(pos, false); pos+=2; return v; }
+  function readInt() { const v = view.getInt32(pos, false); pos+=4; return v; }
+  function readLong() {
+    const hi = view.getInt32(pos, false); const lo = view.getUint32(pos+4, false);
+    pos += 8; return BigInt(hi) * 4294967296n + BigInt(lo);
+  }
+  function readFloat() { const v = view.getFloat32(pos, false); pos+=4; return v; }
+  function readDouble() { const v = view.getFloat64(pos, false); pos+=8; return v; }
+  function readString() {
+    const len = view.getUint16(pos, false); pos+=2;
+    const bytes = new Uint8Array(buffer, pos, len); pos += len;
+    return new TextDecoder().decode(bytes);
+  }
+  function readByteArray(len) { const arr = new Int8Array(buffer, pos, len); pos+=len; return arr; }
+  function readIntArray(len) { const arr=[]; for(let i=0;i<len;i++) arr.push(readInt()); return arr; }
+  function readLongArray(len) { const arr=[]; for(let i=0;i<len;i++) arr.push(readLong()); return arr; }
+
+  function readPayload(type) {
+    switch(type) {
+      case TAG.Byte: return readByte();
+      case TAG.Short: return readShort();
+      case TAG.Int: return readInt();
+      case TAG.Long: return readLong();
+      case TAG.Float: return readFloat();
+      case TAG.Double: return readDouble();
+      case TAG.ByteArray: { const len=readInt(); return readByteArray(len); }
+      case TAG.String: return readString();
+      case TAG.List: {
+        const itemType = readUByte();
+        const len = readInt();
+        const arr = [];
+        for(let i=0;i<len;i++) arr.push(readPayload(itemType));
+        arr._listType = itemType;
+        return arr;
+      }
+      case TAG.Compound: {
+        const obj = {};
+        while(true) {
+          const t = readUByte();
+          if(t === TAG.End) break;
+          const name = readString();
+          obj[name] = readPayload(t);
+        }
+        return obj;
+      }
+      case TAG.IntArray: { const len=readInt(); return readIntArray(len); }
+      case TAG.LongArray: { const len=readInt(); return readLongArray(len); }
+      default: throw new Error(`Unknown tag type: ${type}`);
+    }
+  }
+
+  const rootType = readUByte();
+  if(rootType === TAG.End) return {};
+  readString(); // root name
+  return readPayload(rootType);
+}
+
+// ============================================================
+// Schematic → Block Array
+// ============================================================
+// Block name color map
+const BLOCK_COLORS = {
+  air: null, cave_air: null, void_air: null,
+  stone: '#7a7a7a', granite: '#9a6b5c', diorite: '#b5b5b5', andesite: '#888',
+  grass_block: '#5d9e3f', dirt: '#8B6340', coarse_dirt: '#7a5530',
+  sand: '#e0d4a0', gravel: '#8a8a8a', sandstone: '#d4c87a',
+  oak_log: '#7a5c2e', birch_log: '#c8b98a', spruce_log: '#4a3520',
+  oak_planks: '#b88a50', birch_planks: '#d4c080', spruce_planks: '#6a4a2a',
+  stone_bricks: '#888', cobblestone: '#6a6a6a',
+  glass: '#a8d8f0', glass_pane: '#a8d8f0',
+  water: '#3a6dcc', lava: '#e06020',
+  bedrock: '#333', obsidian: '#1a0a2a',
+  wool: '#f0f0f0', white_wool: '#f0f0f0', red_wool: '#cc3333', blue_wool: '#3344cc',
+  green_wool: '#337733', yellow_wool: '#ddcc22', orange_wool: '#dd7722',
+  leaves: '#2d7d2d', oak_leaves: '#2d7d2d', birch_leaves: '#78a030',
+  torch: '#ffdd44', glowstone: '#ffee88', sea_lantern: '#aaddcc',
+  bricks: '#9a5040', clay: '#8895a0', terracotta: '#9a7060',
+  concrete: '#888', white_concrete: '#ddd', gray_concrete: '#666',
+  iron_block: '#d0d0d0', gold_block: '#f0d020', diamond_block: '#44ddcc',
+  emerald_block: '#22cc55', coal_block: '#222', netherrack: '#8a3333',
+  nether_brick: '#5a2222', quartz_block: '#eeeecc',
+  default: '#aaaaaa'
+};
+
+function getBlockColor(name) {
+  if(!name) return null;
+  const n = name.replace('minecraft:', '').toLowerCase();
+  if(n === 'air' || n === 'cave_air' || n === 'void_air') return null;
+  for(const k of Object.keys(BLOCK_COLORS)) {
+    if(n.includes(k)) return BLOCK_COLORS[k];
+  }
+  return BLOCK_COLORS.default;
+}
+
+let parsedStructure = null;
+let selectedFormat = 'mcstructure';
+
+// ============================================================
+// Packed long array decoder (Sponge v3 + Litematica)
+// ============================================================
+function decodePackedLongs(longs, bitsPerEntry, totalEntries) {
+  const valuesPerLong = Math.floor(64 / bitsPerEntry);
+  const mask = (1n << BigInt(bitsPerEntry)) - 1n;
+  const result = [];
+  for(let i = 0; i < totalEntries; i++) {
+    const longIdx = Math.floor(i / valuesPerLong);
+    const bitOffset = BigInt((i % valuesPerLong) * bitsPerEntry);
+    const raw = typeof longs[longIdx] === 'bigint' ? longs[longIdx] : BigInt(longs[longIdx] || 0);
+    result.push(Number((raw >> bitOffset) & mask));
+  }
+  return result;
+}
+
+// ============================================================
+// Varint decoder (Sponge v2/v3)
+// ============================================================
+function decodeVarints(rawData) {
+  const indices = [];
+  let i = 0;
+  while(i < rawData.length) {
+    let val = 0, shift = 0;
+    while(i < rawData.length) {
+      const b = rawData[i++] & 0xFF;
+      val |= (b & 0x7F) << shift;
+      shift += 7;
+      if(!(b & 0x80)) break;
+    }
+    indices.push(val);
+  }
+  return indices;
+}
+
+// ============================================================
+// NBT structure dump helper
+// ============================================================
+function dumpNBTStructure(obj, depth, maxDepth) {
+  depth = depth || 0; maxDepth = maxDepth || 3;
+  if(depth > maxDepth) return '...';
+  if(obj === null || obj === undefined) return String(obj);
+  if(typeof obj === 'bigint') return 'Long(' + obj + ')';
+  if(obj instanceof Int8Array || obj instanceof Uint8Array) return 'ByteArray[' + obj.length + ']';
+  if(Array.isArray(obj)) {
+    if(obj.length === 0) return '[]';
+    if(typeof obj[0] === 'bigint') return 'LongArray[' + obj.length + ']';
+    if(typeof obj[0] === 'number') return 'IntArray[' + obj.length + ']';
+    return 'List[' + obj.length + ']{' + dumpNBTStructure(obj[0], depth+1, maxDepth) + '...}';
+  }
+  if(typeof obj === 'object') {
+    const keys = Object.keys(obj).slice(0, 10);
+    const parts = keys.map(k => k + ': ' + dumpNBTStructure(obj[k], depth+1, maxDepth));
+    if(Object.keys(obj).length > 10) parts.push('+' + (Object.keys(obj).length-10) + ' more');
+    return '{' + parts.join(', ') + '}';
+  }
+  return String(obj).slice(0,40);
+}
+
+// ============================================================
+// Legacy numeric block ID → name map (Classic .schematic)
+// ============================================================
+const LEGACY_ID_MAP = {
+  0:'air',1:'stone',2:'grass_block',3:'dirt',4:'cobblestone',5:'oak_planks',
+  6:'oak_sapling',7:'bedrock',8:'water',9:'water',10:'lava',11:'lava',
+  12:'sand',13:'gravel',14:'gold_ore',15:'iron_ore',16:'coal_ore',
+  17:'oak_log',18:'oak_leaves',19:'sponge',20:'glass',
+  21:'lapis_ore',22:'lapis_block',23:'dispenser',24:'sandstone',25:'note_block',
+  26:'white_bed',29:'sticky_piston',30:'cobweb',31:'short_grass',32:'dead_bush',
+  33:'piston',35:'white_wool',37:'dandelion',38:'poppy',39:'brown_mushroom',
+  40:'red_mushroom',41:'gold_block',42:'iron_block',44:'stone_slab',45:'bricks',
+  46:'tnt',47:'bookshelf',48:'mossy_cobblestone',49:'obsidian',50:'torch',
+  51:'fire',52:'spawner',53:'oak_stairs',54:'chest',55:'redstone_wire',
+  56:'diamond_ore',57:'diamond_block',58:'crafting_table',59:'wheat',
+  60:'farmland',61:'furnace',62:'furnace',64:'oak_door',65:'ladder',66:'rail',
+  67:'cobblestone_stairs',69:'lever',70:'stone_pressure_plate',71:'iron_door',
+  72:'oak_pressure_plate',73:'redstone_ore',74:'redstone_ore',
+  76:'redstone_torch',77:'stone_button',78:'snow',79:'ice',80:'snow_block',
+  81:'cactus',82:'clay',83:'sugar_cane',84:'jukebox',85:'oak_fence',
+  86:'pumpkin',87:'netherrack',88:'soul_sand',89:'glowstone',91:'carved_pumpkin',
+  92:'cake',95:'white_stained_glass',96:'oak_trapdoor',97:'infested_stone',
+  98:'stone_bricks',99:'brown_mushroom_block',100:'red_mushroom_block',
+  101:'iron_bars',102:'glass_pane',103:'melon_block',106:'vine',
+  107:'oak_fence_gate',108:'brick_stairs',109:'stone_brick_stairs',
+  110:'mycelium',111:'lily_pad',112:'nether_bricks',113:'nether_brick_fence',
+  114:'nether_brick_stairs',115:'nether_wart',116:'enchanting_table',
+  117:'brewing_stand',118:'cauldron',120:'end_portal_frame',121:'end_stone',
+  122:'dragon_egg',123:'redstone_lamp',124:'redstone_lamp',127:'cocoa',
+  128:'sandstone_stairs',129:'emerald_ore',130:'ender_chest',132:'tripwire',
+  133:'emerald_block',134:'spruce_stairs',135:'birch_stairs',136:'jungle_stairs',
+  137:'command_block',138:'beacon',139:'cobblestone_wall',141:'carrots',
+  142:'potatoes',143:'oak_button',145:'anvil',146:'trapped_chest',
+  151:'daylight_detector',152:'redstone_block',153:'nether_quartz_ore',154:'hopper',
+  155:'quartz_block',156:'quartz_stairs',157:'activator_rail',158:'dropper',
+  159:'white_terracotta',160:'white_stained_glass_pane',161:'acacia_leaves',
+  162:'acacia_log',163:'acacia_stairs',164:'dark_oak_stairs',165:'slime_block',
+  166:'barrier',167:'iron_trapdoor',168:'prismarine',169:'sea_lantern',
+  170:'hay_block',171:'white_carpet',172:'terracotta',173:'coal_block',
+  174:'packed_ice',175:'sunflower',179:'red_sandstone',180:'red_sandstone_stairs',
+  182:'red_sandstone_slab',188:'spruce_fence',189:'birch_fence',190:'jungle_fence',
+  191:'dark_oak_fence',192:'acacia_fence',193:'spruce_door',194:'birch_door',
+  195:'jungle_door',196:'acacia_door',197:'dark_oak_door',198:'end_rod',
+  199:'chorus_plant',200:'chorus_flower',201:'purpur_block',202:'purpur_pillar',
+  203:'purpur_stairs',205:'purpur_slab',206:'end_stone_bricks',207:'beetroots',
+  208:'grass_path',212:'frosted_ice',213:'magma_block',214:'nether_wart_block',
+  215:'red_nether_bricks',216:'bone_block',218:'observer',243:'white_concrete',
+  251:'white_concrete',252:'white_concrete_powder',255:'structure_block'
+};
+
+function parseSchematic(nbt) {
+  const keys = Object.keys(nbt);
+  log('info', 'NBT root keys: ' + keys.join(', '));
+
+  // ── Unwrap single-key root wrappers ──────────────────────────
+  // e.g. Sponge v3 files often have a root compound named 'Schematic'
+  if(keys.length === 1 && typeof nbt[keys[0]] === 'object' && !Array.isArray(nbt[keys[0]])) {
+    log('info', 'Unwrapping single root key "' + keys[0] + '"...');
+    return parseSchematic(nbt[keys[0]]);
+  }
+  // Also explicitly handle named 'Schematic' wrapper at any nesting level
+  if(nbt.Schematic !== undefined && typeof nbt.Schematic === 'object') {
+    log('info', 'Unwrapping "Schematic" wrapper key...');
+    return parseSchematic(nbt.Schematic);
+  }
+
+  // ── Sponge v3 (.schem, WorldEdit 7.3+ / 1.18+) ──────────────
+  // Keys: Version>=3, Width, Height, Length, Blocks{Palette, Data}
+  if(nbt.Version !== undefined && Number(nbt.Version) >= 3 && nbt.Blocks !== undefined) {
+    log('ok', 'Detected: Sponge Schematic v' + Number(nbt.Version) + ' format');
+    const W = Number(nbt.Width), H = Number(nbt.Height), L = Number(nbt.Length);
+    const bd = nbt.Blocks;
+    const palette = bd.Palette || bd.BlockPalette || {};
+    const rawData  = bd.Data || bd.BlockData || new Int8Array(0);
+    const idToName = {};
+    for(const [k, v] of Object.entries(palette)) idToName[Number(v)] = k.split('[')[0];
+    const indices = decodeVarints(rawData);
+    const blocks = [];
+    for(let idx = 0; idx < indices.length; idx++) {
+      const name = idToName[indices[idx]] || 'minecraft:air';
+      if(name.includes('air')) continue;
+      const y = Math.floor(idx / (W * L));
+      const z = Math.floor((idx % (W * L)) / W);
+      const x = idx % W;
+      blocks.push({x, y, z, name});
+    }
+    log('ok', 'Sponge v3: ' + blocks.length + ' non-air blocks');
+    return {width: W, height: H, length: L, blocks};
+  }
+
+  // ── Sponge v2 (.schem, WorldEdit 7.x / 1.13–1.17) ───────────
+  if(nbt.Palette !== undefined && nbt.BlockData !== undefined) {
+    const ver = nbt.Version !== undefined ? Number(nbt.Version) : 2;
+    log('ok', 'Detected: Sponge Schematic v' + ver + ' format');
+    const W = Number(nbt.Width), H = Number(nbt.Height), L = Number(nbt.Length);
+    const idToName = {};
+    for(const [k, v] of Object.entries(nbt.Palette)) idToName[Number(v)] = k.split('[')[0];
+    const indices = decodeVarints(nbt.BlockData);
+    const blocks = [];
+    for(let idx = 0; idx < indices.length; idx++) {
+      const name = idToName[indices[idx]] || 'minecraft:air';
+      if(name.includes('air')) continue;
+      const y = Math.floor(idx / (W * L));
+      const z = Math.floor((idx % (W * L)) / W);
+      const x = idx % W;
+      blocks.push({x, y, z, name});
+    }
+    log('ok', 'Sponge v2: ' + blocks.length + ' non-air blocks');
+    return {width: W, height: H, length: L, blocks};
+  }
+
+  // ── Sponge v1 (.schematic with named string palette) ─────────
+  if(nbt.Palette !== undefined && nbt.Blocks !== undefined && typeof nbt.Palette === 'object' && !Array.isArray(nbt.Palette)) {
+    log('ok', 'Detected: Sponge Schematic v1 format');
+    const W = Number(nbt.Width), H = Number(nbt.Height), L = Number(nbt.Length);
+    const idToName = {};
+    for(const [name, id] of Object.entries(nbt.Palette)) idToName[Number(id)] = name.split('[')[0];
+    const blockData = nbt.Blocks;
+    const blocks = [];
+    for(let i = 0; i < blockData.length; i++) {
+      const name = idToName[blockData[i] & 0xFF] || 'minecraft:air';
+      if(name.includes('air')) continue;
+      const y = Math.floor(i / (W * L));
+      const z = Math.floor((i % (W * L)) / W);
+      blocks.push({x: i % W, y, z, name});
+    }
+    return {width: W, height: H, length: L, blocks};
+  }
+
+  // ── Classic MCEdit .schematic (pre-1.13, numeric IDs) ────────
+  if(nbt.Width !== undefined && nbt.Height !== undefined && nbt.Length !== undefined && nbt.Blocks !== undefined) {
+    log('ok', 'Detected: Classic MCEdit .schematic format');
+    const W = Number(nbt.Width), H = Number(nbt.Height), L = Number(nbt.Length);
+    const blockIds = nbt.Blocks;
+    const addBlocks = nbt.AddBlocks || null;
+    const blocks = [];
+    for(let y=0;y<H;y++) for(let z=0;z<L;z++) for(let x=0;x<W;x++) {
+      const idx = y*W*L + z*W + x;
+      let id = blockIds[idx] & 0xFF;
+      if(addBlocks) {
+        const ab = addBlocks[idx >> 1];
+        id |= (idx % 2 === 0) ? (ab & 0x0F) << 8 : (ab & 0xF0) << 4;
+      }
+      if(id === 0) continue;
+      blocks.push({x, y, z, name: 'minecraft:' + (LEGACY_ID_MAP[id] || 'stone')});
+    }
+    return {width: W, height: H, length: L, blocks};
+  }
+
+  // ── Litematica .litematic ─────────────────────────────────────
+  if(nbt.Regions !== undefined && nbt.Metadata !== undefined) {
+    log('ok', 'Detected: Litematica .litematic format');
+    const regions = nbt.Regions;
+    const regionNames = Object.keys(regions);
+    log('info', 'Regions: ' + regionNames.join(', '));
+    let allBlocks = [], minX=0, minY=0, minZ=0, maxX=0, maxY=0, maxZ=0, first=true;
+
+    for(const rname of regionNames) {
+      const region = regions[rname];
+      const sz = region.Size || {};
+      const pos = region.Position || {};
+      const rW = Math.abs(Number(sz.x ?? sz[0] ?? 16));
+      const rH = Math.abs(Number(sz.y ?? sz[1] ?? 16));
+      const rL = Math.abs(Number(sz.z ?? sz[2] ?? 16));
+      const rX = Number(pos.x ?? pos[0] ?? 0);
+      const rY = Number(pos.y ?? pos[1] ?? 0);
+      const rZ = Number(pos.z ?? pos[2] ?? 0);
+      log('info', 'Region "' + rname + '": ' + rW + 'x' + rH + 'x' + rL + ' @ (' + rX + ',' + rY + ',' + rZ + ')');
+
+      const palette = region.BlockStatePalette || region.Palette || [];
+      const paletteNames = palette.map(p => (p.Name || p.name || 'minecraft:air').split('[')[0]);
+      const blockStates = region.BlockStates || [];
+      if(!blockStates.length) { log('warn', 'Region "' + rname + '" has no block states'); continue; }
+
+      const total = rW * rH * rL;
+      const bitsPerEntry = Math.max(4, Math.ceil(Math.log2(Math.max(paletteNames.length, 2))));
+      log('info', '  bits/entry: ' + bitsPerEntry + ', palette: ' + paletteNames.length);
+      const indices = decodePackedLongs(blockStates, bitsPerEntry, total);
+
+      for(let i = 0; i < total; i++) {
+        const name = paletteNames[indices[i]] || 'minecraft:air';
+        if(!name || name.includes('air')) continue;
+        const y = Math.floor(i / (rW * rL));
+        const z = Math.floor((i % (rW * rL)) / rW);
+        const x = i % rW;
+        const ax = x+rX, ay = y+rY, az = z+rZ;
+        allBlocks.push({x: ax, y: ay, z: az, name});
+        if(first) { minX=maxX=ax; minY=maxY=ay; minZ=maxZ=az; first=false; }
+        else {
+          if(ax<minX) minX=ax; if(ax>maxX) maxX=ax;
+          if(ay<minY) minY=ay; if(ay>maxY) maxY=ay;
+          if(az<minZ) minZ=az; if(az>maxZ) maxZ=az;
+        }
+      }
+    }
+    for(const b of allBlocks) { b.x -= minX; b.y -= minY; b.z -= minZ; }
+    log('ok', 'Litematica: ' + allBlocks.length + ' blocks across ' + regionNames.length + ' region(s)');
+    return {width: maxX-minX+1, height: maxY-minY+1, length: maxZ-minZ+1, blocks: allBlocks};
+  }
+
+  // ── Java Edition vanilla structure .nbt ───────────────────────
+  if(nbt.size !== undefined && nbt.blocks !== undefined && nbt.palette !== undefined) {
+    log('ok', 'Detected: Java Edition structure .nbt format');
+    const [W,H,L] = [Number(nbt.size[0]),Number(nbt.size[1]),Number(nbt.size[2])];
+    const palette = nbt.palette.map(p => (p.Name||p.name||'minecraft:air').split('[')[0]);
+    const blocks = [];
+    for(const b of nbt.blocks) {
+      const name = palette[Number(b.state)] || 'minecraft:air';
+      if(name.includes('air')) continue;
+      const x = Number(Array.isArray(b.pos)?b.pos[0]:b.pos?.x??0);
+      const y = Number(Array.isArray(b.pos)?b.pos[1]:b.pos?.y??0);
+      const z = Number(Array.isArray(b.pos)?b.pos[2]:b.pos?.z??0);
+      blocks.push({x,y,z,name});
+    }
+    return {width:W,height:H,length:L,blocks};
+  }
+
+  // ── Unknown: dump full structure to log for debugging ─────────
+  log('warn', 'Full NBT dump: ' + dumpNBTStructure(nbt, 0, 2));
+  function logDeep(obj, prefix) {
+    if(typeof obj !== 'object' || obj === null || Array.isArray(obj)) return;
+    for(const [k, v] of Object.entries(obj)) {
+      const t = Array.isArray(v) ? 'Array['+v.length+']' : typeof v === 'object' && v !== null ? 'Compound{'+Object.keys(v).slice(0,6).join(',')+'}' : typeof v;
+      log('warn', prefix + k + ': ' + t);
+      if(typeof v === 'object' && v !== null && !Array.isArray(v) && prefix.length < 8) logDeep(v, prefix + '  ');
+    }
+  }
+  logDeep(nbt, '  ');
+  throw new Error('Unrecognized schematic format. Root keys: ' + keys.join(', ') + '\nCheck the log for the NBT dump.\nSupported: Classic .schematic, Sponge v1/v2/v3 .schem, Java .nbt, Litematica .litematic');
+}
+
+// ============================================================
+// .mcstructure writer (Bedrock NBT - little-endian)
+// ============================================================
+function writeMcstructure(structure) {
+  // Bedrock uses little-endian NBT
+  const blocks = structure.blocks;
+
+  // Collect palette
+  const paletteMap = new Map();
+  for(const b of blocks) {
+    if(!paletteMap.has(b.name)) paletteMap.set(b.name, paletteMap.size);
+  }
+  const palette = [...paletteMap.keys()];
+  const airIdx = palette.indexOf('minecraft:air');
+  const fillIdx = airIdx >= 0 ? airIdx : 0;
+
+  const W = structure.width, H = structure.height, L = structure.length;
+  const total = W * H * L;
+  const layerData = new Array(total).fill(fillIdx);
+
+  for(const b of blocks) {
+    const idx = b.x + b.z*W + b.y*W*L;
+    if(idx >= 0 && idx < total) layerData[idx] = paletteMap.get(b.name) ?? fillIdx;
+  }
+
+  // Write little-endian NBT
+  const bufs = [];
+
+  function putByte(v) { bufs.push(new Uint8Array([v & 0xFF])); }
+  function putShortLE(v) { const b=new Uint8Array(2); new DataView(b.buffer).setInt16(0,v,true); bufs.push(b); }
+  function putIntLE(v) { const b=new Uint8Array(4); new DataView(b.buffer).setInt32(0,v,true); bufs.push(b); }
+  function putString(s) {
+    const e = new TextEncoder().encode(s);
+    putShortLE(e.length);
+    bufs.push(e);
+  }
+  function putTag(type, name, writeFn) {
+    putByte(type); putString(name); writeFn();
+  }
+  function startCompound(name) { putByte(10); putString(name); }
+  function endCompound() { putByte(0); }
+
+  // Root compound
+  putByte(10); putString(''); // root
+
+  // format_version
+  putByte(3); putString('format_version'); putIntLE(1);
+
+  // size
+  putByte(9); putString('size');
+  putByte(3); putIntLE(3); putIntLE(W); putIntLE(H); putIntLE(L);
+
+  // structure_world_origin
+  const ox = parseInt(document.getElementById('offX').value)||0;
+  const oy = parseInt(document.getElementById('offY').value)||0;
+  const oz = parseInt(document.getElementById('offZ').value)||0;
+  putByte(9); putString('structure_world_origin');
+  putByte(3); putIntLE(3); putIntLE(ox); putIntLE(oy); putIntLE(oz);
+
+  // structure compound
+  startCompound('structure');
+
+  // block_indices: two layers, layer 0 = blocks, layer 1 = -1 (waterlogging)
+  putByte(9); putString('block_indices');
+  putByte(9); putIntLE(2); // list of 2 int-arrays
+  // layer 0
+  putByte(11); putIntLE(total); for(const v of layerData) putIntLE(v);
+  // layer 1 (all -1)
+  putByte(11); putIntLE(total); for(let i=0;i<total;i++) putIntLE(-1);
+
+  // entities (empty)
+  putByte(9); putString('entities'); putByte(10); putIntLE(0);
+
+  // palette compound
+  startCompound('palette');
+  startCompound('default');
+
+  // block_palette list
+  putByte(9); putString('block_palette'); putByte(10); putIntLE(palette.length);
+  for(const blockName of palette) {
+    startCompound('');
+    // name
+    putByte(8); putString('name'); putString(blockName);
+    // states (empty compound)
+    startCompound('states'); endCompound();
+    // version
+    putByte(3); putString('version'); putIntLE(17825806);
+    endCompound();
+  }
+
+  // block_position_data (empty)
+  startCompound('block_position_data'); endCompound();
+
+  endCompound(); // default
+  endCompound(); // palette
+  endCompound(); // structure
+  endCompound(); // root
+
+  const total_len = bufs.reduce((a,b)=>a+b.length,0);
+  const out = new Uint8Array(total_len);
+  let off = 0;
+  for(const b of bufs) { out.set(b, off); off += b.length; }
+  return out;
+}
+
+// ============================================================
+// .mcfunction writer
+// ============================================================
+function writeMcfunction(structure) {
+  const ox = parseInt(document.getElementById('offX').value)||0;
+  const oy = parseInt(document.getElementById('offY').value)||0;
+  const oz = parseInt(document.getElementById('offZ').value)||0;
+  const lines = ['# Generated by Bedrock Auto Builder', `# Size: ${structure.width}x${structure.height}x${structure.length}`, ''];
+  for(const b of structure.blocks) {
+    lines.push(`setblock ~${b.x+ox} ~${b.y+oy} ~${b.z+oz} ${b.name}`);
+  }
+  return new TextEncoder().encode(lines.join('\n'));
+}
+
+// ============================================================
+// Behavior Pack (ZIP) writer
+// ============================================================
+async function writeBehaviorPack(structure) {
+  // Simple ZIP builder without external lib
+  const fname = 'structures/autobuilder/build.mcfunction';
+  const manifest = JSON.stringify({
+    format_version: 2,
+    header: { name: "AutoBuilder", description: "Generated structure", uuid: crypto.randomUUID(), version: [1,0,0] },
+    modules: [{ type: "data", uuid: crypto.randomUUID(), version: [1,0,0] }]
+  }, null, 2);
+  const func = new TextDecoder().decode(writeMcfunction(structure));
+  const tickJson = JSON.stringify({ values: ["autobuilder/build"] });
+
+  function makeZip(files) {
+    // Minimal ZIP implementation
+    const enc = new TextEncoder();
+    const parts = []; const cds = [];
+    let offset = 0;
+
+    for(const [name, content] of files) {
+      const nameBytes = enc.encode(name);
+      const data = typeof content === 'string' ? enc.encode(content) : content;
+      const header = new Uint8Array(30 + nameBytes.length);
+      const dv = new DataView(header.buffer);
+      dv.setUint32(0, 0x04034b50, true); dv.setUint16(4, 20, true); dv.setUint16(6, 0, true);
+      dv.setUint16(8, 0, true); dv.setUint16(10, 0, true); dv.setUint16(12, 0, true);
+      dv.setUint32(14, 0, true);
+      dv.setUint32(18, data.length, true); dv.setUint32(22, data.length, true);
+      dv.setUint16(26, nameBytes.length, true); dv.setUint16(28, 0, true);
+      header.set(nameBytes, 30);
+
+      const cd = new Uint8Array(46 + nameBytes.length);
+      const cdv = new DataView(cd.buffer);
+      cdv.setUint32(0, 0x02014b50, true); cdv.setUint16(4, 20, true); cdv.setUint16(6, 20, true);
+      cdv.setUint16(8, 0, true); cdv.setUint16(10, 0, true); cdv.setUint16(12, 0, true);
+      cdv.setUint16(14, 0, true); cdv.setUint32(16, 0, true);
+      cdv.setUint32(20, data.length, true); cdv.setUint32(24, data.length, true);
+      cdv.setUint16(28, nameBytes.length, true); cdv.setUint16(30, 0, true);
+      cdv.setUint16(32, 0, true); cdv.setUint16(34, 0, true); cdv.setUint16(36, 0, true);
+      cdv.setUint32(38, 0, true); cdv.setUint32(42, offset, true);
+      cd.set(nameBytes, 46);
+
+      parts.push(header, data);
+      cds.push(cd);
+      offset += header.length + data.length;
+    }
+
+    const cdStart = offset;
+    const cdSize = cds.reduce((a,b)=>a+b.length,0);
+    const eocd = new Uint8Array(22);
+    const edv = new DataView(eocd.buffer);
+    edv.setUint32(0, 0x06054b50, true); edv.setUint16(4, 0, true); edv.setUint16(6, 0, true);
+    edv.setUint16(8, files.length, true); edv.setUint16(10, files.length, true);
+    edv.setUint32(12, cdSize, true); edv.setUint32(16, cdStart, true); edv.setUint16(20, 0, true);
+
+    const all = [...parts, ...cds, eocd];
+    const total = all.reduce((a,b)=>a+b.length,0);
+    const out = new Uint8Array(total);
+    let off = 0;
+    for(const b of all) { out.set(b, off); off += b.length; }
+    return out;
+  }
+
+  return makeZip([
+    ['manifest.json', manifest],
+    ['functions/autobuilder/build.mcfunction', func],
+    ['functions/tick.json', tickJson]
+  ]);
+}
+
+// ============================================================
+// Three.js 3D Viewer
+// ============================================================
+let renderer, scene, camera, isDragging = false, isRightDrag = false;
+let prevMouse = {x:0,y:0};
+let spherical = {theta: 0.5, phi: 1.0, r: 30};
+let panOffset = {x:0, y:0};
+let currentMeshes = [];
+let showLayer = -1; // -1 = all
+
+function initViewer() {
+  const canvas = document.getElementById('viewer-canvas');
+  renderer = new THREE.WebGLRenderer({canvas, antialias:false});
+  renderer.setPixelRatio(window.devicePixelRatio);
+
+  scene = new THREE.Scene();
+  scene.background = new THREE.Color(0x0d1a2a);
+  scene.fog = new THREE.Fog(0x0d1a2a, 80, 200);
+
+  camera = new THREE.PerspectiveCamera(60, canvas.clientWidth / canvas.clientHeight, 0.1, 1000);
+
+  const ambLight = new THREE.AmbientLight(0xffffff, 0.6);
+  scene.add(ambLight);
+  const dirLight = new THREE.DirectionalLight(0xffffff, 0.8);
+  dirLight.position.set(1,2,1);
+  scene.add(dirLight);
+
+  // Grid
+  const grid = new THREE.GridHelper(100, 100, 0x3a4a3a, 0x1a2a1a);
+  scene.add(grid);
+
+  canvas.addEventListener('mousedown', e => {
+    isDragging = true; isRightDrag = e.button === 2;
+    prevMouse = {x:e.clientX, y:e.clientY};
+  });
+  canvas.addEventListener('contextmenu', e => e.preventDefault());
+  window.addEventListener('mouseup', () => isDragging = false);
+  window.addEventListener('mousemove', e => {
+    if(!isDragging) return;
+    const dx = e.clientX - prevMouse.x;
+    const dy = e.clientY - prevMouse.y;
+    if(isRightDrag) {
+      panOffset.x -= dx * 0.05;
+      panOffset.y += dy * 0.05;
+    } else {
+      spherical.theta -= dx * 0.01;
+      spherical.phi = Math.max(0.1, Math.min(Math.PI-0.1, spherical.phi - dy*0.01));
+    }
+    prevMouse = {x:e.clientX, y:e.clientY};
+  });
+  canvas.addEventListener('wheel', e => {
+    spherical.r = Math.max(5, Math.min(200, spherical.r + e.deltaY * 0.05));
+    e.preventDefault();
+  }, {passive:false});
+
+  function animate() {
+    requestAnimationFrame(animate);
+    const x = spherical.r * Math.sin(spherical.phi) * Math.sin(spherical.theta) + panOffset.x;
+    const y = spherical.r * Math.cos(spherical.phi) + panOffset.y;
+    const z = spherical.r * Math.sin(spherical.phi) * Math.cos(spherical.theta);
+    camera.position.set(x, y, z);
+    camera.lookAt(panOffset.x, panOffset.y, 0);
+
+    const w = canvas.clientWidth, h = canvas.clientHeight;
+    if(renderer.domElement.width !== w || renderer.domElement.height !== h) {
+      renderer.setSize(w, h, false);
+      camera.aspect = w/h;
+      camera.updateProjectionMatrix();
+    }
+    renderer.render(scene, camera);
+  }
+  animate();
+}
+
+function buildViewer(structure) {
+  if(!renderer) initViewer();
+
+  // Remove old meshes
+  for(const m of currentMeshes) scene.remove(m);
+  currentMeshes = [];
+
+  const geo = new THREE.BoxGeometry(1,1,1);
+
+  // Group blocks by color for instanced rendering
+  const colorGroups = new Map();
+  for(const b of structure.blocks) {
+    const col = getBlockColor(b.name);
+    if(!col) continue;
+    if(!colorGroups.has(col)) colorGroups.set(col, []);
+    colorGroups.get(col).push(b);
+  }
+
+  const cx = structure.width/2, cy = structure.height/2, cz = structure.length/2;
+
+  for(const [color, blocks] of colorGroups) {
+    const mat = new THREE.MeshLambertMaterial({color});
+    const mesh = new THREE.InstancedMesh(geo, mat, blocks.length);
+    const dummy = new THREE.Object3D();
+    blocks.forEach((b, i) => {
+      dummy.position.set(b.x - cx, b.y - cy, b.z - cz);
+      dummy.updateMatrix();
+      mesh.setMatrixAt(i, dummy.matrix);
+    });
+    mesh.instanceMatrix.needsUpdate = true;
+    mesh.userData.blocks = blocks;
+    mesh.userData.cx = cx; mesh.userData.cy = cy; mesh.userData.cz = cz;
+    scene.add(mesh);
+    currentMeshes.push(mesh);
+  }
+
+  // Update layer slider
+  const slider = document.getElementById('layerSlider');
+  slider.max = structure.height - 1;
+  slider.value = 0;
+  document.getElementById('layerCtrl').style.display = 'flex';
+
+  spherical.r = Math.max(structure.width, structure.height, structure.length) * 1.5;
+}
+
+function updateLayerSlice(val) {
+  const allCheck = document.getElementById('layerAll');
+  if(allCheck.checked) return;
+  const layer = parseInt(val);
+  document.getElementById('layerVal').textContent = layer;
+  showLayer = layer;
+  applyLayerFilter();
+}
+
+function toggleAllLayers(checked) {
+  if(checked) {
+    showLayer = -1;
+    document.getElementById('layerVal').textContent = 'ALL';
+    applyLayerFilter();
+  } else {
+    showLayer = parseInt(document.getElementById('layerSlider').value);
+    document.getElementById('layerVal').textContent = showLayer;
+    applyLayerFilter();
+  }
+}
+
+function applyLayerFilter() {
+  if(!parsedStructure) return;
+  for(const m of currentMeshes) {
+    const blocks = m.userData.blocks;
+    const dummy = new THREE.Object3D();
+    const cx = m.userData.cx, cy = m.userData.cy, cz = m.userData.cz;
+    blocks.forEach((b, i) => {
+      dummy.position.set(b.x - cx, b.y - cy, b.z - cz);
+      const visible = showLayer === -1 || b.y === showLayer;
+      dummy.scale.set(visible?1:0, visible?1:0, visible?1:0);
+      dummy.updateMatrix();
+      m.setMatrixAt(i, dummy.matrix);
+    });
+    m.instanceMatrix.needsUpdate = true;
+  }
+}
+
+// ============================================================
+// UI Logic
+// ============================================================
+function log(type, msg) {
+  const el = document.getElementById('log');
+  const line = document.createElement('div');
+  line.className = `log-line ${type}`;
+  const prefix = {info:'▸', ok:'✓', warn:'⚠', err:'✕'}[type] || '▸';
+  line.textContent = `${prefix} ${msg}`;
+  el.appendChild(line);
+  el.scrollTop = el.scrollHeight;
+}
+
+function setProgress(pct) {
+  document.getElementById('progressFill').style.width = pct + '%';
+}
+
+function showNotif(msg, isError=false) {
+  const n = document.getElementById('notif');
+  n.textContent = msg;
+  n.className = 'notif show' + (isError?' error':'');
+  setTimeout(() => n.className = 'notif', 2500);
+}
+
+function selectFormat(el) {
+  document.querySelectorAll('.opt-row').forEach(r => r.classList.remove('selected'));
+  el.classList.add('selected');
+  selectedFormat = el.dataset.fmt;
+}
+
+function resetAll() {
+  parsedStructure = null;
+  document.getElementById('statsGrid').style.display = 'none';
+  document.getElementById('paletteSection').style.display = 'none';
+  document.getElementById('exportBtn').disabled = true;
+  document.getElementById('placeholder').style.display = 'flex';
+  document.getElementById('viewer-canvas').style.display = 'none';
+  document.getElementById('layerCtrl').style.display = 'none';
+  for(const m of currentMeshes) if(renderer) renderer.deallocateObject?.(m) || scene?.remove(m);
+  currentMeshes = [];
+  setProgress(0);
+  log('info', 'Reset.');
+}
+
+async function handleFile(file) {
+  if(!file) return;
+  log('info', `Loading: ${file.name} (${(file.size/1024).toFixed(1)} KB)`);
+  setProgress(10);
+
+  try {
+    let buffer = await file.arrayBuffer();
+
+    // Try gzip decompression
+    try {
+      const uint = new Uint8Array(buffer);
+      if(uint[0] === 0x1f && uint[1] === 0x8b) {
+        log('info', 'Decompressing gzip...');
+        const decompressed = pako.ungzip(uint);
+        buffer = decompressed.buffer;
+        log('ok', `Decompressed: ${(buffer.byteLength/1024).toFixed(1)} KB`);
+      }
+    } catch(e) { log('warn', 'Not gzip, treating as raw NBT'); }
+
+    setProgress(30);
+    log('info', 'Parsing NBT...');
+    const nbt = parseNBT(buffer);
+    setProgress(60);
+
+    log('info', 'Extracting blocks...');
+    parsedStructure = parseSchematic(nbt);
+    setProgress(80);
+
+    const nonAir = parsedStructure.blocks.length;
+    log('ok', `Parsed! Size: ${parsedStructure.width}×${parsedStructure.height}×${parsedStructure.length}`);
+    log('ok', `Non-air blocks: ${nonAir.toLocaleString()}`);
+
+    // Update stats
+    document.getElementById('statX').textContent = parsedStructure.width;
+    document.getElementById('statY').textContent = parsedStructure.height;
+    document.getElementById('statZ').textContent = parsedStructure.length;
+    document.getElementById('statBlocks').textContent = nonAir > 9999 ? (nonAir/1000).toFixed(1)+'K' : nonAir;
+    document.getElementById('statsGrid').style.display = 'grid';
+
+    // Build palette
+    const counts = {};
+    for(const b of parsedStructure.blocks) { counts[b.name] = (counts[b.name]||0)+1; }
+    const sorted = Object.entries(counts).sort((a,b)=>b[1]-a[1]);
+    const listEl = document.getElementById('paletteList');
+    listEl.innerHTML = '';
+    for(const [name, count] of sorted.slice(0,30)) {
+      const color = getBlockColor(name) || '#555';
+      const shortName = name.replace('minecraft:','');
+      listEl.innerHTML += `<div class="block-row">
+        <div class="block-swatch" style="background:${color}"></div>
+        <span class="block-name">${shortName}</span>
+        <span class="block-count">${count}</span>
+      </div>`;
+    }
+    if(sorted.length > 30) listEl.innerHTML += `<div class="block-row" style="color:var(--dim);font-size:10px">...and ${sorted.length-30} more types</div>`;
+    document.getElementById('paletteSection').style.display = 'block';
+
+    // Show viewer
+    document.getElementById('placeholder').style.display = 'none';
+    document.getElementById('viewer-canvas').style.display = 'block';
+
+    if(nonAir > 50000) {
+      log('warn', `Large structure (${nonAir.toLocaleString()} blocks) — preview may be slow`);
+    }
+    buildViewer(parsedStructure);
+    document.getElementById('exportBtn').disabled = false;
+    setProgress(100);
+    showNotif('Structure loaded!');
+    setTimeout(()=>setProgress(0), 1000);
+
+  } catch(e) {
+    log('err', `Error: ${e.message}`);
+    setProgress(0);
+    showNotif('Load failed: ' + e.message, true);
+    console.error(e);
+  }
+}
+
+async function exportFile() {
+  if(!parsedStructure) return;
+  const btn = document.getElementById('exportBtn');
+  btn.disabled = true; btn.textContent = '⏳ GENERATING...';
+  setProgress(20);
+  log('info', `Exporting as ${selectedFormat}...`);
+
+  try {
+    let data, filename, mime;
+
+    if(selectedFormat === 'mcstructure') {
+      data = writeMcstructure(parsedStructure);
+      filename = 'autobuilder.mcstructure';
+      mime = 'application/octet-stream';
+      log('ok', `Generated .mcstructure (${(data.length/1024).toFixed(1)} KB, ${parsedStructure.blocks.length} blocks)`);
+    } else if(selectedFormat === 'mcfunction') {
+      data = writeMcfunction(parsedStructure);
+      filename = 'autobuilder.mcfunction';
+      mime = 'text/plain';
+      log('ok', `Generated ${parsedStructure.blocks.length} /setblock commands`);
+    } else {
+      // behaviorpack now handled by its own tab button
+      log('warn', 'Use the PACK tab to export a Behavior Pack');
+      btn.disabled = false; btn.textContent = '▶ GENERATE FILE';
+      return;
+    }
+
+    setProgress(90);
+    const blob = new Blob([data], {type: mime});
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url; a.download = filename; a.click();
+    URL.revokeObjectURL(url);
+
+    setProgress(100);
+    showNotif('Download started!');
+    log('ok', `Downloaded: ${filename}`);
+    setTimeout(()=>setProgress(0), 1000);
+
+  } catch(e) {
+    log('err', `Export error: ${e.message}`);
+    showNotif('Export failed', true);
+    console.error(e);
+  }
+
+  btn.disabled = false;
+  btn.textContent = '▶ GENERATE FILE';
+}
+
+// ============================================================
+// Tab switching
+// ============================================================
+function switchTab(name, el) {
+  document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+  document.querySelectorAll('.tab-content').forEach(t => t.classList.remove('active'));
+  el.classList.add('active');
+  document.getElementById('tab-' + name).classList.add('active');
+  selectedFormat = name === 'export' ? 'mcstructure' : name;
+}
+
+// ============================================================
+// Speed control
+// ============================================================
+const SPEED_PRESETS = [
+  {label:'SLOW', desc:'~5 blocks/sec — safe for slow PCs', bps:5},
+  {label:'SLOW', desc:'~10 blocks/sec', bps:10},
+  {label:'MED',  desc:'~25 blocks/sec', bps:25},
+  {label:'MED',  desc:'~50 blocks/sec — balanced', bps:50},
+  {label:'MED',  desc:'~75 blocks/sec', bps:75},
+  {label:'FAST', desc:'~100 blocks/sec', bps:100},
+  {label:'FAST', desc:'~150 blocks/sec', bps:150},
+  {label:'FAST', desc:'~200 blocks/sec', bps:200},
+  {label:'TURBO','desc':'~300 blocks/sec — may cause lag', bps:300},
+  {label:'MAX',  desc:'~500 blocks/sec — max speed, no delay', bps:500},
+];
+document.getElementById('buildSpeed').addEventListener('input', function() {
+  const p = SPEED_PRESETS[this.value - 1];
+  document.getElementById('speedLabel').textContent = p.label;
+  document.getElementById('speedDesc').textContent = p.desc;
+});
+
+// ============================================================
+// WebSocket Live Build — Termux local + custom relay
+// ============================================================
+let ws = null;
+let wsReady = false;
+let mcReady = false;
+let buildRunning = false;
+let buildStop = false;
+let wsMode = 'local';
+
+function setWsMode(mode) {
+  wsMode = mode;
+  document.getElementById('localPanel').style.display = mode === 'local' ? '' : 'none';
+  document.getElementById('relayPanel').style.display = mode === 'relay' ? '' : 'none';
+  document.getElementById('modeLocalBtn').style.background = mode === 'local' ? 'var(--accent)' : 'var(--border)';
+  document.getElementById('modeLocalBtn').style.color = mode === 'local' ? '#fff' : 'var(--dim)';
+  document.getElementById('modeRelayBtn').style.background = mode === 'relay' ? 'var(--accent)' : 'var(--border)';
+  document.getElementById('modeRelayBtn').style.color = mode === 'relay' ? '#fff' : 'var(--dim)';
+}
+
+function randomSessionLocal() {
+  const words = ['build','house','castle','tower','farm','mine','base','arena','ship','temple'];
+  const id = words[Math.floor(Math.random()*words.length)] + Math.floor(Math.random()*900+100);
+  document.getElementById('wsSession').value = id;
+  updateLocalCommand();
+}
+
+function randomSession() {
+  const words = ['build','house','castle','tower','farm','mine','base','arena','ship','temple'];
+  const id = words[Math.floor(Math.random()*words.length)] + Math.floor(Math.random()*900+100);
+  document.getElementById('sessionId').value = id;
+  updateMcCommand();
+}
+
+function updateLocalCommand() {
+  const session = document.getElementById('wsSession')?.value?.trim() || 'build1';
+  const el = document.getElementById('mcCommandLocalText');
+  if(el) el.textContent = '/wsserver localhost:19131?session=' + session;
+}
+
+function updateMcCommand() {
+  const url = document.getElementById('relayUrl')?.value?.trim() || '';
+  const session = document.getElementById('sessionId')?.value?.trim() || 'build1';
+  const cmdBox = document.getElementById('mcCommand');
+  const cmdText = document.getElementById('mcCommandText');
+  if(!cmdBox || !cmdText) return;
+  if(url) {
+    const clean = url.replace(/^wss?:\/\//, '').replace(/^https?:\/\//, '').replace(/\/$/, '');
+    cmdText.textContent = '/wsserver ' + clean + '?session=' + session;
+    cmdBox.style.display = '';
+  } else {
+    cmdBox.style.display = 'none';
+  }
+}
+
+document.addEventListener('DOMContentLoaded', () => {
+  document.getElementById('wsSession')?.addEventListener('input', updateLocalCommand);
+  document.getElementById('relayUrl')?.addEventListener('input', updateMcCommand);
+  document.getElementById('sessionId')?.addEventListener('input', updateMcCommand);
+  updateLocalCommand();
+});
+
+function wsSetStatus(state, msg) {
+  const dot = document.getElementById('wsDot');
+  const lbl = document.getElementById('wsLabel');
+  dot.className = 'ws-dot ' + state;
+  lbl.innerHTML = msg;
+  const active = state === 'connected' || state === 'connecting' || state === 'mc-waiting';
+  document.getElementById('wsConnectBtn').style.display = active ? 'none' : '';
+  document.getElementById('wsDisconnectBtn').style.display = active ? '' : 'none';
+  document.getElementById('liveBtn').disabled = !(state === 'connected' && parsedStructure);
+}
+
+function wsConnect() {
+  let wsUrl;
+  if(wsMode === 'local') {
+    const session = document.getElementById('wsSession').value.trim() || 'build1';
+    wsUrl = 'ws://localhost:19131?session=' + session + '&role=browser';
+  } else {
+    const base = document.getElementById('relayUrl').value.trim();
+    const session = document.getElementById('sessionId').value.trim() || 'build1';
+    if(!base) { showNotif('Enter your server URL!', true); return; }
+    const clean = base.replace(/^wss?:\/\//, '').replace(/^https?:\/\//, '').replace(/\/$/, '');
+    wsUrl = 'ws://' + clean + '?session=' + session + '&role=browser';
+  }
+
+  wsSetStatus('connecting', '<b>Connecting...</b> ' + wsUrl.split('?')[0]);
+  log('info', 'Connecting to: ' + wsUrl);
+
+  try {
+    ws = new WebSocket(wsUrl);
+
+    ws.onopen = () => {
+      wsSetStatus('mc-waiting', '<b style="color:var(--gold)">Relay ready</b> — waiting for Minecraft...');
+      log('ok', 'Connected to relay!');
+      log('info', 'Now run the /wsserver command in Minecraft chat ↑');
+      showNotif('Relay connected! Run /wsserver in MC');
+    };
+
+    ws.onmessage = (e) => {
+      try {
+        const d = JSON.parse(e.data);
+        if(d.__relay === 'minecraft_connected' || d.__relay === 'minecraft_ready') {
+          wsReady = true; mcReady = true;
+          wsSetStatus('connected', '<b style="color:var(--accent)">✓ Minecraft connected!</b> Ready to build');
+          log('ok', '🎮 Minecraft is connected! Hit START AUTO BUILD.');
+          showNotif('Minecraft connected!');
+          if(parsedStructure) document.getElementById('liveBtn').disabled = false;
+        } else if(d.__relay === 'minecraft_disconnected') {
+          mcReady = false;
+          wsSetStatus('mc-waiting', '<b style="color:var(--gold)">Relay ready</b> — Minecraft disconnected');
+          log('warn', 'Minecraft disconnected from relay.');
+        }
+        if(d.body?.statusMessage) log('info', 'MC: ' + d.body.statusMessage);
+      } catch(_){}
+    };
+
+    ws.onerror = () => {
+      wsReady = false; mcReady = false;
+      wsSetStatus('error', '<b style="color:var(--red)">Failed to connect</b> — is Termux relay running?');
+      log('err', 'Connection failed. Make sure Termux relay is running: cd ~/mc-relay && node server.js');
+    };
+
+    ws.onclose = () => {
+      wsReady = false; mcReady = false; buildRunning = false;
+      wsSetStatus('', '<b>Disconnected</b>');
+      log('warn', 'WebSocket closed.');
+    };
+  } catch(e) {
+    wsSetStatus('error', '<b style="color:var(--red)">Error:</b> ' + e.message);
+    log('err', e.message);
+  }
+}
+
+function wsDisconnect() {
+  buildStop = true;
+  if(ws) ws.close();
+  ws = null; wsReady = false; mcReady = false;
+  wsSetStatus('', '<b>Disconnected</b>');
+}
+
+function wsSend(cmd) {
+  if(!ws || ws.readyState !== WebSocket.OPEN) return false;
+  const msg = JSON.stringify({
+    header: {
+      version: 1,
+      requestId: crypto.randomUUID(),
+      messagePurpose: 'commandRequest',
+      messageType: 'commandRequest'
+    },
+    body: {
+      version: 1,
+      commandLine: cmd,
+      origin: { type: 'player' }
+    }
+  });
+  ws.send(msg);
+  return true;
+}
+
+async function startLiveBuild() {
+  if(!parsedStructure || !wsReady) return;
+  if(buildRunning) return;
+
+  buildRunning = true; buildStop = false;
+  const blocks = parsedStructure.blocks;
+  const ox = parseInt(document.getElementById('offX').value)||0;
+  const oy = parseInt(document.getElementById('offY').value)||0;
+  const oz = parseInt(document.getElementById('offZ').value)||0;
+
+  const speedIdx = parseInt(document.getElementById('buildSpeed').value) - 1;
+  const bps = SPEED_PRESETS[speedIdx].bps;
+  const delay = Math.max(0, Math.round(1000 / bps)); // ms per block
+
+  document.getElementById('liveBtn').style.display = 'none';
+  document.getElementById('stopBtn').style.display = '';
+  const prog = document.getElementById('buildProgress');
+  prog.style.display = 'block';
+  document.getElementById('bTotal').textContent = blocks.length;
+
+  log('ok', 'Live build started! ' + blocks.length + ' blocks @ ~' + bps + ' blocks/sec');
+  log('info', 'Origin: ' + ox + ',' + oy + ',' + oz);
+
+  let placed = 0;
+  const startTime = Date.now();
+
+  // Sort blocks bottom-up so we build floor first
+  const sorted = [...blocks].sort((a, b) => a.y - b.y);
+
+  for(let i = 0; i < sorted.length; i++) {
+    if(buildStop) break;
+    const b = sorted[i];
+    const cmd = 'setblock ~' + (b.x+ox) + ' ~' + (b.y+oy) + ' ~' + (b.z+oz) + ' ' + b.name + ' replace';
+    if(!wsSend(cmd)) {
+      log('err', 'Connection lost at block ' + i);
+      break;
+    }
+    placed++;
+    // Update UI every 20 blocks
+    if(placed % 20 === 0 || placed === sorted.length) {
+      const pct = (placed / sorted.length * 100).toFixed(1);
+      document.getElementById('buildFill').style.width = pct + '%';
+      document.getElementById('bPlaced').textContent = placed;
+      const elapsed = (Date.now() - startTime) / 1000;
+      const rate = placed / elapsed;
+      const remaining = (sorted.length - placed) / rate;
+      document.getElementById('bEta').textContent = remaining > 0 ? Math.ceil(remaining) + 's' : 'done!';
+    }
+    if(delay > 0) await new Promise(r => setTimeout(r, delay));
+  }
+
+  buildRunning = false;
+  document.getElementById('liveBtn').style.display = '';
+  document.getElementById('stopBtn').style.display = 'none';
+
+  if(!buildStop) {
+    log('ok', '✅ Build complete! ' + placed + ' blocks placed.');
+    showNotif('Build complete! ' + placed + ' blocks placed.');
+    document.getElementById('bEta').textContent = 'done!';
+  } else {
+    log('warn', 'Build stopped at ' + placed + '/' + sorted.length + ' blocks.');
+    showNotif('Build stopped.', true);
+  }
+}
+
+function stopLiveBuild() {
+  buildStop = true;
+  document.getElementById('stopBtn').style.display = 'none';
+  document.getElementById('liveBtn').style.display = '';
+}
+
+// ============================================================
+// Behavior Pack export (batched, tick.json)
+// ============================================================
+async function exportBehaviorPack() {
+  if(!parsedStructure) return;
+  const btn = document.getElementById('bpBtn');
+  btn.disabled = true; btn.textContent = '⏳ GENERATING...';
+
+  const ox = parseInt(document.getElementById('offX').value)||0;
+  const oy = parseInt(document.getElementById('offY').value)||0;
+  const oz = parseInt(document.getElementById('offZ').value)||0;
+  const packName = (document.getElementById('packName').value || 'AutoBuilder').replace(/[^a-zA-Z0-9_]/g,'_');
+  const useTick = document.getElementById('chkTickJson').checked;
+  const useBatch = document.getElementById('chkBatched').checked;
+  const blocks = parsedStructure.blocks;
+
+  // Sort bottom-up
+  const sorted = [...blocks].sort((a,b) => a.y - b.y);
+  const BATCH = 8000; // safe command limit per function
+
+  // Build function files
+  const files = [];
+  const enc = new TextEncoder();
+
+  const header = '# Auto-generated by Bedrock Auto Builder\n# ' + sorted.length + ' blocks\n\n';
+
+  if(useBatch && sorted.length > BATCH) {
+    // Split into chunks, each calls the next
+    const numChunks = Math.ceil(sorted.length / BATCH);
+    log('info', 'Batching into ' + numChunks + ' function files...');
+    const tickFuncs = [];
+
+    for(let c = 0; c < numChunks; c++) {
+      const chunk = sorted.slice(c * BATCH, (c+1) * BATCH);
+      const lines = [header];
+      for(const b of chunk) {
+        lines.push('setblock ~' + (b.x+ox) + ' ~' + (b.y+oy) + ' ~' + (b.z+oz) + ' ' + b.name);
+      }
+      const fname = 'functions/' + packName + '/chunk_' + c + '.mcfunction';
+      files.push([fname, lines.join('\n')]);
+      tickFuncs.push(packName + '/chunk_' + c);
+      document.getElementById('bpProgressFill').style.width = (c/numChunks*60+10) + '%';
+      await new Promise(r=>setTimeout(r,0)); // yield to UI
+    }
+
+    if(useTick) {
+      files.push(['functions/tick.json', JSON.stringify({values: tickFuncs}, null, 2)]);
+    } else {
+      // Main entry function that calls all chunks
+      const main = tickFuncs.map(f => 'function ' + f).join('\n');
+      files.push(['functions/' + packName + '/build.mcfunction', main]);
+      files.push(['functions/tick.json', JSON.stringify({values: [packName + '/build']}, null, 2)]);
+    }
+  } else {
+    const lines = [header];
+    for(const b of sorted) {
+      lines.push('setblock ~' + (b.x+ox) + ' ~' + (b.y+oy) + ' ~' + (b.z+oz) + ' ' + b.name);
+    }
+    files.push(['functions/' + packName + '/build.mcfunction', lines.join('\n')]);
+    if(useTick) {
+      files.push(['functions/tick.json', JSON.stringify({values: [packName + '/build']}, null, 2)]);
+    }
+  }
+
+  document.getElementById('bpProgressFill').style.width = '70%';
+
+  // manifest.json
+  const manifest = {
+    format_version: 2,
+    header: {
+      name: packName + ' Auto Build',
+      description: 'Generated by Bedrock Auto Builder | ' + sorted.length + ' blocks | ' + parsedStructure.width + 'x' + parsedStructure.height + 'x' + parsedStructure.length,
+      uuid: crypto.randomUUID(),
+      version: [1,0,0],
+      min_engine_version: [1,19,0]
+    },
+    modules: [{
+      type: 'data',
+      uuid: crypto.randomUUID(),
+      version: [1,0,0]
+    }]
+  };
+  files.push(['manifest.json', JSON.stringify(manifest, null, 2)]);
+  files.push(['pack_icon.png', new Uint8Array([137,80,78,71,13,10,26,10,0,0,0,13,73,72,68,82,0,0,0,1,0,0,0,1,8,2,0,0,0,144,119,83,222,0,0,0,12,73,68,65,84,8,215,99,96,96,96,0,0,0,4,0,1,39,7,245,81,0,0,0,0,73,69,78,68,174,66,96,130])]);
+
+  document.getElementById('bpProgressFill').style.width = '85%';
+
+  // Build ZIP
+  const zipData = makeZip(files);
+  document.getElementById('bpProgressFill').style.width = '100%';
+
+  const blob = new Blob([zipData], {type:'application/zip'});
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url; a.download = packName + '_behaviorpack.zip'; a.click();
+  URL.revokeObjectURL(url);
+
+  log('ok', 'Behavior Pack exported: ' + packName + '_behaviorpack.zip');
+  log('ok', files.length + ' files, ' + sorted.length + ' blocks total');
+  showNotif('Behavior Pack ready!');
+  btn.disabled = false; btn.textContent = '📦 EXPORT BEHAVIOR PACK';
+  setTimeout(() => document.getElementById('bpProgressFill').style.width='0%', 1500);
+}
+
+// ============================================================
+// ZIP builder (shared)
+// ============================================================
+function makeZip(files) {
+  const enc = new TextEncoder();
+  const parts = []; const cds = [];
+  let offset = 0;
+
+  for(const [name, content] of files) {
+    const nameBytes = enc.encode(name);
+    const data = typeof content === 'string' ? enc.encode(content) : content;
+    const header = new Uint8Array(30 + nameBytes.length);
+    const dv = new DataView(header.buffer);
+    dv.setUint32(0, 0x04034b50, true); dv.setUint16(4, 20, true);
+    dv.setUint16(8, 0, true); dv.setUint16(10, 0, true);
+    dv.setUint32(14, 0, true);
+    dv.setUint32(18, data.length, true); dv.setUint32(22, data.length, true);
+    dv.setUint16(26, nameBytes.length, true); dv.setUint16(28, 0, true);
+    header.set(nameBytes, 30);
+
+    const cd = new Uint8Array(46 + nameBytes.length);
+    const cdv = new DataView(cd.buffer);
+    cdv.setUint32(0, 0x02014b50, true); cdv.setUint16(4, 20, true); cdv.setUint16(6, 20, true);
+    cdv.setUint16(8, 0, true); cdv.setUint32(16, 0, true);
+    cdv.setUint32(20, data.length, true); cdv.setUint32(24, data.length, true);
+    cdv.setUint16(28, nameBytes.length, true);
+    cdv.setUint32(42, offset, true);
+    cd.set(nameBytes, 46);
+
+    parts.push(header, data); cds.push(cd);
+    offset += header.length + data.length;
+  }
+
+  const cdStart = offset;
+  const cdSize = cds.reduce((a,b)=>a+b.length,0);
+  const eocd = new Uint8Array(22);
+  const edv = new DataView(eocd.buffer);
+  edv.setUint32(0, 0x06054b50, true);
+  edv.setUint16(8, files.length, true); edv.setUint16(10, files.length, true);
+  edv.setUint32(12, cdSize, true); edv.setUint32(16, cdStart, true);
+
+  const all = [...parts, ...cds, eocd];
+  const total = all.reduce((a,b)=>a+b.length,0);
+  const out = new Uint8Array(total);
+  let off = 0; for(const b of all) { out.set(b, off); off+=b.length; }
+  return out;
+}
+
+// Make liveBtn enabled when structure loads
+const _origBuildViewer = buildViewer;
+buildViewer = function(structure) {
+  _origBuildViewer(structure);
+  if(wsReady) document.getElementById('liveBtn').disabled = false;
+  document.getElementById('bpBtn').disabled = false;
+};
+
+
+// ============================================================
+// Upload zone
+// ============================================================
+const zone = document.getElementById('uploadZone');
+const input = document.getElementById('fileInput');
+zone.onclick = () => input.click();
+input.onchange = e => handleFile(e.target.files[0]);
+zone.ondragover = e => { e.preventDefault(); zone.classList.add('drag-over'); };
+zone.ondragleave = () => zone.classList.remove('drag-over');
+zone.ondrop = e => {
+  e.preventDefault(); zone.classList.remove('drag-over');
+  handleFile(e.dataTransfer.files[0]);
+};
+
+// Init viewer early
+window.addEventListener('load', () => {
+  const canvas = document.getElementById('viewer-canvas');
+  if(canvas.style.display !== 'none') initViewer();
+});
+</script>
+</body>
+</html>
