@@ -1,109 +1,116 @@
 const WebSocket = require('ws');
 const http = require('http');
+const net = require('net');
 
-const PORT = process.env.PORT || 19131;
+const PORT = 19131;
 
-// HTTP server for Render health checks
+// ── RAW TCP LOGGER to see EXACTLY what Minecraft sends ────────
+const tcpServer = net.createServer((socket) => {
+  const addr = socket.remoteAddress + ':' + socket.remotePort;
+  console.log('\n[TCP] New raw connection from: ' + addr);
+  
+  socket.once('data', (buf) => {
+    console.log('[TCP] Raw data (' + buf.length + ' bytes):');
+    console.log('[TCP] ASCII: ' + buf.toString('ascii').slice(0, 200).replace(/\r\n/g,'↵'));
+    console.log('[TCP] HEX:   ' + buf.slice(0,16).toString('hex'));
+    
+    // Check if it looks like a WebSocket upgrade request
+    const str = buf.toString();
+    if (str.includes('Upgrade: websocket') || str.includes('upgrade: websocket')) {
+      console.log('[TCP] ✅ This IS a WebSocket upgrade — passing to WS server');
+    } else if (str.includes('HTTP')) {
+      console.log('[TCP] ⚠ This is plain HTTP, not WebSocket');
+    } else {
+      console.log('[TCP] ❓ Unknown protocol');
+    }
+    socket.destroy();
+  });
+  
+  socket.on('error', e => console.log('[TCP] socket error: ' + e.message));
+});
+
+// ── HTTP + WS server ──────────────────────────────────────────
 const server = http.createServer((req, res) => {
-  if (req.url === '/health') {
-    res.writeHead(200, { 'Content-Type': 'application/json' });
-    res.end(JSON.stringify({
-      status: 'ok',
-      sessions: Object.keys(sessions).length,
-      uptime: Math.floor(process.uptime())
-    }));
-    return;
-  }
-  // Status page
-  res.writeHead(200, { 'Content-Type': 'text/html' });
-  res.end(`<!DOCTYPE html>
-<html style="background:#0d0f0e;color:#d4e8c2;font-family:monospace;padding:40px">
-<h2 style="color:#FFD700">⛏ MC Relay Server</h2>
-<p>Active sessions: <b style="color:#5d9e3f">${Object.keys(sessions).length}</b></p>
-<p>Uptime: <b style="color:#5d9e3f">${Math.floor(process.uptime())}s</b></p>
-<p style="color:#7a9a6a;font-size:12px">WebSocket relay for Bedrock Auto Builder</p>
-</html>`);
+  console.log('[HTTP] ' + req.method + ' ' + req.url + ' ua=' + (req.headers['user-agent']||'').slice(0,50));
+  res.writeHead(200);
+  res.end('MC Relay running');
 });
 
 const wss = new WebSocket.Server({ server });
-
-// Sessions: sessionId -> { browser, minecraft }
 const sessions = {};
 
-function getOrCreateSession(id) {
-  if (!sessions[id]) sessions[id] = { browser: null, minecraft: null };
-  return sessions[id];
-}
-
-function cleanSession(id) {
-  const s = sessions[id];
-  if (s && !s.browser && !s.minecraft) {
-    delete sessions[id];
-    console.log(`[${id}] Session cleaned up`);
-  }
-}
-
 wss.on('connection', (sock, req) => {
-  const url = new URL(req.url, `http://localhost`);
-  const sessionId = url.searchParams.get('session') || 'default';
-  const role = url.searchParams.get('role'); // 'browser' or 'minecraft'
-  const ua = req.headers['user-agent'] || '';
+  let sessionId = 'default';
+  let role = null;
+  try {
+    const raw = req.url || '/';
+    const urlStr = raw.startsWith('/') ? 'http://x' + raw : 'http://x/' + raw;
+    const url = new URL(urlStr);
+    sessionId = url.searchParams.get('session') || 'default';
+    role = url.searchParams.get('role');
+  } catch(e) {}
 
-  // Auto-detect role from User-Agent if not specified
-  const isBrowser = role === 'browser' || (!role && ua.includes('Mozilla'));
+  const ua = req.headers['user-agent'] || '';
+  const isBrowser = role === 'browser' || (!role && ua.toLowerCase().includes('mozilla'));
   const roleName = isBrowser ? 'browser' : 'minecraft';
 
-  const session = getOrCreateSession(sessionId);
+  if (!sessions[sessionId]) sessions[sessionId] = { browser: null, minecraft: null };
+  const session = sessions[sessionId];
+  if (session[roleName]?.readyState === WebSocket.OPEN) session[roleName].close();
   session[roleName] = sock;
-  console.log(`[${sessionId}] ${roleName} connected (${isBrowser ? 'browser' : 'MC'})`);
 
-  // Notify browser when Minecraft connects
-  if (!isBrowser && session.browser && session.browser.readyState === WebSocket.OPEN) {
+  console.log('\n[WS] ' + roleName + ' connected  session=' + sessionId);
+  console.log('[WS] User-Agent: ' + ua.slice(0,80));
+  console.log('[WS] URL: ' + req.url);
+
+  if (!isBrowser && session.browser?.readyState === WebSocket.OPEN) {
     session.browser.send(JSON.stringify({ __relay: 'minecraft_connected' }));
+    console.log('[WS] ✅ Told browser: minecraft connected!');
   }
-  // Notify minecraft when browser connects
-  if (isBrowser && session.minecraft && session.minecraft.readyState === WebSocket.OPEN) {
+  if (isBrowser && session.minecraft?.readyState === WebSocket.OPEN) {
     sock.send(JSON.stringify({ __relay: 'minecraft_ready' }));
   }
 
-  sock.on('message', (data) => {
+  sock.on('message', data => {
     const peer = isBrowser ? session.minecraft : session.browser;
-    if (peer && peer.readyState === WebSocket.OPEN) {
+    if (peer?.readyState === WebSocket.OPEN) {
       peer.send(data);
+    } else {
+      try { console.log('[WS] ' + roleName + ' msg (no peer): ' + data.toString().slice(0,100)); } catch(_){}
     }
   });
 
   sock.on('close', () => {
     session[roleName] = null;
-    console.log(`[${sessionId}] ${roleName} disconnected`);
-    // Notify peer
     const peer = isBrowser ? session.minecraft : session.browser;
-    if (peer && peer.readyState === WebSocket.OPEN) {
-      peer.send(JSON.stringify({ __relay: roleName + '_disconnected' }));
-    }
-    setTimeout(() => cleanSession(sessionId), 5000);
+    if (peer?.readyState === WebSocket.OPEN) peer.send(JSON.stringify({ __relay: roleName + '_disconnected' }));
+    console.log('[WS] ' + roleName + ' disconnected session=' + sessionId);
+    setTimeout(() => { if (!session.browser && !session.minecraft) delete sessions[sessionId]; }, 5000);
   });
 
-  sock.on('error', (err) => {
-    console.error(`[${sessionId}] ${roleName} error:`, err.message);
-    session[roleName] = null;
-  });
+  sock.on('error', e => { session[roleName] = null; });
 });
 
-server.listen(PORT, () => {
-  console.log(`MC Relay server running on port ${PORT}`);
-  console.log(`WebSocket: ws://localhost:${PORT}?session=SESSION_ID&role=browser`);
-  console.log(`Health:    http://localhost:${PORT}/health`);
+// ── Start BOTH servers ────────────────────────────────────────
+// TCP raw logger on 19132 to capture Minecraft's raw bytes
+tcpServer.listen(19132, '0.0.0.0', () => {
+  console.log('[TCP] Raw logger on port 19132');
 });
 
-// Keep alive ping every 25s (prevents Render free tier sleep)
-setInterval(() => {
-  wss.clients.forEach(client => {
-    if (client.readyState === WebSocket.OPEN) {
-      client.ping();
-    }
-  });
-}, 25000);
+server.listen(PORT, '0.0.0.0', () => {
+  console.log('');
+  console.log('╔══════════════════════════════════════╗');
+  console.log('║  ⛏  MC Relay + Debugger  READY       ║');
+  console.log('╠══════════════════════════════════════╣');
+  console.log('║  WS server:  port ' + PORT + '              ║');
+  console.log('║  TCP logger: port 19132              ║');
+  console.log('╚══════════════════════════════════════╝');
+  console.log('');
+  console.log('Try in Minecraft chat:');
+  console.log('  /wsserver localhost:19131?session=build1');
+  console.log('  /wsserver localhost:19131');
+  console.log('  /wsserver 127.0.0.1:19131');
+  console.log('');
+});
 
-process.on('uncaughtException', err => console.error('Uncaught:', err.message));
-process.on('unhandledRejection', err => console.error('Unhandled:', err?.message));
+process.on('uncaughtException', e => console.error('ERR: ' + e.message));
