@@ -1910,8 +1910,13 @@ function wsConnect() {
         if(d.__relay === 'minecraft_connected' || d.__relay === 'minecraft_ready') {
           wsReady = true; mcReady = true;
           wsSetStatus('connected', '<b style="color:var(--accent)">✓ Minecraft connected!</b> Ready to build');
-          log('ok', '🎮 Minecraft is connected! Hit START AUTO BUILD.');
+          log('ok', '🎮 Minecraft is connected! Subscribing to events...');
           showNotif('Minecraft connected!');
+          // CRITICAL: Subscribe to CommandResponse events — without this
+          // Minecraft receives commands but silently ignores them
+          wsSubscribe('PlayerMessage');
+          wsSubscribe('BlockPlaced');
+          log('ok', 'Subscribed! Ready to build.');
           if(parsedStructure) document.getElementById('liveBtn').disabled = false;
           document.getElementById('testBtn').disabled = false;
         } else if(d.__relay === 'minecraft_disconnected') {
@@ -1945,6 +1950,21 @@ function wsDisconnect() {
   if(ws) ws.close();
   ws = null; wsReady = false; mcReady = false;
   wsSetStatus('', '<b>Disconnected</b>');
+}
+
+function wsSubscribe(eventName) {
+  if(!ws || ws.readyState !== WebSocket.OPEN) return;
+  const msg = JSON.stringify({
+    header: {
+      version: 1,
+      requestId: crypto.randomUUID(),
+      messagePurpose: 'subscribe',
+      messageType: 'commandRequest'
+    },
+    body: { eventName }
+  });
+  ws.send(msg);
+  log('info', 'Subscribed to: ' + eventName);
 }
 
 function wsSend(cmd) {
@@ -2013,7 +2033,7 @@ async function startLiveBuild() {
     const b = sorted[i];
     // Always use absolute world coordinates
     // WebSocket commands don't execute relative to player position
-    const cmd = 'setblock ' + (b.x+ox) + ' ' + (b.y+oy) + ' ' + (b.z+oz) + ' ' + b.name;
+    const cmd = 'setblock ' + (b.x+ox) + ' ' + (b.y+oy) + ' ' + (b.z+oz) + ' ' + b.name.replace('minecraft:','');
     if(!wsSend(cmd)) {
       log('err', 'Connection lost at block ' + i);
       break;
