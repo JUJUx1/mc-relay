@@ -653,8 +653,8 @@
 
         <!-- Offset row shared by all tabs -->
         <div style="padding:10px 14px 0; display:flex; gap:8px; align-items:center; font-size:10px; color:var(--dim)">
-          <b style="color:var(--text)">ORIGIN:</b>
-          <span>X</span><input id="offX" type="number" value="0" style="width:54px;background:#111;border:1px solid var(--border);color:var(--text);padding:4px 6px;font-family:inherit;font-size:11px">
+          <b style="color:var(--text)">YOUR COORDS:</b>
+          <span style="font-size:9px;color:var(--dim);width:100%;margin-bottom:4px">Enter your XYZ from top of Minecraft screen:</span></div><div style="display:flex;gap:8px;align-items:center;font-size:10px;color:var(--dim);padding:0 14px 10px;flex-wrap:wrap"><span>X</span><input id="offX" type="number" value="0" style="width:54px;background:#111;border:1px solid var(--border);color:var(--text);padding:4px 6px;font-family:inherit;font-size:11px">
           <span>Y</span><input id="offY" type="number" value="0" style="width:54px;background:#111;border:1px solid var(--border);color:var(--text);padding:4px 6px;font-family:inherit;font-size:11px">
           <span>Z</span><input id="offZ" type="number" value="0" style="width:54px;background:#111;border:1px solid var(--border);color:var(--text);padding:4px 6px;font-family:inherit;font-size:11px">
         </div>
@@ -1969,11 +1969,14 @@ function wsSend(cmd) {
 
 function testBlock() {
   if(!wsReady) { showNotif('Not connected!', true); return; }
-  // Place a single glowstone at relative position ~0 ~1 ~0 (1 block above player)
-  const cmd = 'setblock ~0 ~1 ~0 glowstone';
+  const ox = parseInt(document.getElementById('offX').value)||0;
+  const oy = parseInt(document.getElementById('offY').value)||0;
+  const oz = parseInt(document.getElementById('offZ').value)||0;
+  // Use absolute coords — WS commands don't use player position for ~
+  const cmd = 'setblock ' + ox + ' ' + (oy+1) + ' ' + oz + ' glowstone';
   const ok = wsSend(cmd);
-  log(ok ? 'ok' : 'err', ok ? 'Test sent: ' + cmd : 'Send failed — not connected');
-  if(ok) showNotif('Test block sent! Look above you in Minecraft');
+  log(ok ? 'ok' : 'err', ok ? 'Test block at: ' + ox + ' ' + (oy+1) + ' ' + oz : 'Send failed');
+  if(ok) showNotif('Test block sent to ' + ox + ',' + (oy+1) + ',' + oz);
 }
 
 async function startLiveBuild() {
@@ -2008,15 +2011,9 @@ async function startLiveBuild() {
   for(let i = 0; i < sorted.length; i++) {
     if(buildStop) break;
     const b = sorted[i];
-    // Use absolute coords if offset given, relative ~ if zero
-    let cmd;
-    if(ox === 0 && oy === 0 && oz === 0) {
-      // Relative to player position
-      cmd = 'setblock ~' + b.x + ' ~' + b.y + ' ~' + b.z + ' ' + b.name;
-    } else {
-      // Absolute world coordinates
-      cmd = 'setblock ' + (b.x+ox) + ' ' + (b.y+oy) + ' ' + (b.z+oz) + ' ' + b.name;
-    }
+    // Always use absolute world coordinates
+    // WebSocket commands don't execute relative to player position
+    const cmd = 'setblock ' + (b.x+ox) + ' ' + (b.y+oy) + ' ' + (b.z+oz) + ' ' + b.name;
     if(!wsSend(cmd)) {
       log('err', 'Connection lost at block ' + i);
       break;
