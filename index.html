@@ -1841,7 +1841,7 @@ function randomSession() {
 function updateLocalCommand() {
   const session = document.getElementById('wsSession')?.value?.trim() || 'build1';
   const el = document.getElementById('mcCommandLocalText');
-  if(el) el.textContent = '/wsserver localhost:19131?session=' + session;
+  if(el) el.textContent = '/wsserver localhost:19131';
 }
 
 function updateMcCommand() {
@@ -1881,7 +1881,7 @@ function wsConnect() {
   let wsUrl;
   if(wsMode === 'local') {
     const session = document.getElementById('wsSession').value.trim() || 'build1';
-    wsUrl = 'ws://localhost:19131?session=' + session + '&role=browser';
+    wsUrl = 'ws://localhost:19131?session=default&role=browser';
   } else {
     const base = document.getElementById('relayUrl').value.trim();
     const session = document.getElementById('sessionId').value.trim() || 'build1';
