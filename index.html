@@ -1952,6 +1952,200 @@ function wsDisconnect() {
   wsSetStatus('', '<b>Disconnected</b>');
 }
 
+// ============================================================
+// Java → Bedrock block name converter
+// ============================================================
+function toBedrockName(name) {
+  // Strip minecraft: prefix
+  let n = name.replace('minecraft:', '');
+
+  // Java → Bedrock name mappings
+  const MAP = {
+    // Grass/dirt
+    'grass_block': 'grass',
+    'rooted_dirt': 'dirt',
+    'short_grass': 'tallgrass',
+    'tall_grass': 'tallgrass',
+    // Logs (Bedrock uses old_log, log, log2)
+    'oak_log': 'log',
+    'spruce_log': 'log',
+    'birch_log': 'log',
+    'jungle_log': 'log',
+    'acacia_log': 'log2',
+    'dark_oak_log': 'log2',
+    'oak_wood': 'wood',
+    'spruce_wood': 'wood',
+    'birch_wood': 'wood',
+    'jungle_wood': 'wood',
+    'acacia_wood': 'wood',
+    'dark_oak_wood': 'wood',
+    // Stripped logs — keep as-is, Bedrock supports them
+    // Planks
+    'oak_planks': 'planks',
+    'spruce_planks': 'planks',
+    'birch_planks': 'planks',
+    'jungle_planks': 'planks',
+    'acacia_planks': 'planks',
+    'dark_oak_planks': 'planks',
+    // Leaves
+    'oak_leaves': 'leaves',
+    'spruce_leaves': 'leaves',
+    'birch_leaves': 'leaves',
+    'jungle_leaves': 'leaves',
+    'acacia_leaves': 'leaves2',
+    'dark_oak_leaves': 'leaves2',
+    // Stone variants
+    'stone_bricks': 'stonebrick',
+    'mossy_stone_bricks': 'stonebrick',
+    'cracked_stone_bricks': 'stonebrick',
+    'chiseled_stone_bricks': 'stonebrick',
+    'cobblestone': 'cobblestone',
+    'mossy_cobblestone': 'mossy_cobblestone',
+    'stone_brick_stairs': 'stone_brick_stairs',
+    'stone_brick_slab': 'stone_slab',
+    // Slabs
+    'oak_slab': 'wooden_slab',
+    'spruce_slab': 'wooden_slab',
+    'birch_slab': 'wooden_slab',
+    'jungle_slab': 'wooden_slab',
+    'acacia_slab': 'wooden_slab',
+    'dark_oak_slab': 'wooden_slab',
+    'smooth_stone_slab': 'stone_slab',
+    'sandstone_slab': 'stone_slab',
+    'cobblestone_slab': 'stone_slab',
+    'brick_slab': 'stone_slab',
+    'quartz_slab': 'stone_slab',
+    // Stairs
+    'oak_stairs': 'oak_stairs',
+    'spruce_stairs': 'spruce_stairs',
+    'birch_stairs': 'birch_stairs',
+    'jungle_stairs': 'jungle_stairs',
+    'acacia_stairs': 'acacia_stairs',
+    'dark_oak_stairs': 'dark_oak_stairs',
+    'cobblestone_stairs': 'stone_stairs',
+    'brick_stairs': 'brick_stairs',
+    // Doors/Fences
+    'oak_fence': 'fence',
+    'spruce_fence': 'fence',
+    'birch_fence': 'fence',
+    'jungle_fence': 'fence',
+    'oak_fence_gate': 'fence_gate',
+    'spruce_fence_gate': 'spruce_fence_gate',
+    // Concrete
+    'white_concrete': 'concrete',
+    'orange_concrete': 'concrete',
+    'magenta_concrete': 'concrete',
+    'light_blue_concrete': 'concrete',
+    'yellow_concrete': 'concrete',
+    'lime_concrete': 'concrete',
+    'pink_concrete': 'concrete',
+    'gray_concrete': 'concrete',
+    'light_gray_concrete': 'concrete',
+    'cyan_concrete': 'concrete',
+    'purple_concrete': 'concrete',
+    'blue_concrete': 'concrete',
+    'brown_concrete': 'concrete',
+    'green_concrete': 'concrete',
+    'red_concrete': 'concrete',
+    'black_concrete': 'concrete',
+    // Wool
+    'white_wool': 'wool',
+    'orange_wool': 'wool',
+    'magenta_wool': 'wool',
+    'light_blue_wool': 'wool',
+    'yellow_wool': 'wool',
+    'lime_wool': 'wool',
+    'pink_wool': 'wool',
+    'gray_wool': 'wool',
+    'light_gray_wool': 'wool',
+    'cyan_wool': 'wool',
+    'purple_wool': 'wool',
+    'blue_wool': 'wool',
+    'brown_wool': 'wool',
+    'green_wool': 'wool',
+    'red_wool': 'wool',
+    'black_wool': 'wool',
+    // Terracotta
+    'white_terracotta': 'stained_hardened_clay',
+    'orange_terracotta': 'stained_hardened_clay',
+    'terracotta': 'hardened_clay',
+    // Glass
+    'glass': 'glass',
+    'glass_pane': 'glass_pane',
+    'white_stained_glass': 'stained_glass',
+    'orange_stained_glass': 'stained_glass',
+    // Water/Lava
+    'water': 'water',
+    'lava': 'lava',
+    // Misc
+    'bricks': 'brick_block',
+    'bookshelf': 'bookshelf',
+    'crafting_table': 'crafting_table',
+    'furnace': 'furnace',
+    'chest': 'chest',
+    'torch': 'torch',
+    'ladder': 'ladder',
+    'snow_block': 'snow',
+    'ice': 'ice',
+    'packed_ice': 'packed_ice',
+    'blue_ice': 'blue_ice',
+    'hay_block': 'hay_block',
+    'pumpkin': 'pumpkin',
+    'carved_pumpkin': 'carved_pumpkin',
+    'melon': 'melon_block',
+    'sea_lantern': 'sea_lantern',
+    'glowstone': 'glowstone',
+    'shroomlight': 'shroomlight',
+    'end_stone': 'end_stone',
+    'end_stone_bricks': 'end_bricks',
+    'purpur_block': 'purpur_block',
+    'purpur_pillar': 'purpur_pillar',
+    'nether_bricks': 'nether_brick',
+    'red_nether_bricks': 'red_nether_brick',
+    'soul_sand': 'soul_sand',
+    'soul_soil': 'soul_soil',
+    'netherrack': 'netherrack',
+    'magma_block': 'magma',
+    'obsidian': 'obsidian',
+    'crying_obsidian': 'crying_obsidian',
+    'bedrock': 'bedrock',
+    'diamond_block': 'diamond_block',
+    'gold_block': 'gold_block',
+    'iron_block': 'iron_block',
+    'emerald_block': 'emerald_block',
+    'coal_block': 'coal_block',
+    'redstone_block': 'redstone_block',
+    'lapis_block': 'lapis_block',
+    'quartz_block': 'quartz_block',
+    'smooth_quartz': 'quartz_block',
+    'chiseled_quartz_block': 'quartz_block',
+    'quartz_pillar': 'quartz_block',
+    'sandstone': 'sandstone',
+    'smooth_sandstone': 'sandstone',
+    'chiseled_sandstone': 'sandstone',
+    'cut_sandstone': 'sandstone',
+    'red_sandstone': 'red_sandstone',
+    'prismarine': 'prismarine',
+    'prismarine_bricks': 'prismarine',
+    'dark_prismarine': 'prismarine',
+    'amethyst_block': 'amethyst_block',
+    'calcite': 'calcite',
+    'tuff': 'tuff',
+    'deepslate': 'deepslate',
+    'cobbled_deepslate': 'cobbled_deepslate',
+    'deepslate_bricks': 'deepslate_bricks',
+    'deepslate_tiles': 'deepslate_tiles',
+    'polished_deepslate': 'polished_deepslate',
+    'mud_bricks': 'mud_bricks',
+    'packed_mud': 'packed_mud',
+    'mangrove_planks': 'mangrove_planks',
+    'bamboo_planks': 'bamboo_planks',
+    'cherry_planks': 'cherry_planks',
+  };
+
+  return MAP[n] || n;
+}
+
 function wsSubscribe(eventName) {
   if(!ws || ws.readyState !== WebSocket.OPEN) return;
   const msg = JSON.stringify({
@@ -1969,18 +2163,17 @@ function wsSubscribe(eventName) {
 
 function wsSend(cmd) {
   if(!ws || ws.readyState !== WebSocket.OPEN) return false;
-  // Bedrock WebSocket API — exact format required
+  // Exact format verified working from test.js — no origin field
   const msg = JSON.stringify({
     header: {
       version: 1,
-      requestId: crypto.randomUUID(),
+      requestId: '00000000-0000-0000-0000-' + String(Date.now()).padStart(12,'0'),
       messagePurpose: 'commandRequest',
       messageType: 'commandRequest'
     },
     body: {
       version: 1,
-      commandLine: cmd,
-      origin: { type: 'player' }
+      commandLine: cmd
     }
   });
   ws.send(msg);
@@ -2032,8 +2225,8 @@ async function startLiveBuild() {
     if(buildStop) break;
     const b = sorted[i];
     // Always use absolute world coordinates
-    // WebSocket commands don't execute relative to player position
-    const cmd = 'setblock ' + (b.x+ox) + ' ' + (b.y+oy) + ' ' + (b.z+oz) + ' ' + b.name.replace('minecraft:','');
+    const blockName = toBedrockName(b.name);
+    const cmd = 'setblock ' + (b.x+ox) + ' ' + (b.y+oy) + ' ' + (b.z+oz) + ' ' + blockName;
     if(!wsSend(cmd)) {
       log('err', 'Connection lost at block ' + i);
       break;
