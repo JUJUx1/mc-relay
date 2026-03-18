@@ -653,7 +653,7 @@
 
         <!-- Offset row shared by all tabs -->
         <div style="padding:10px 14px 0; display:flex; gap:8px; align-items:center; font-size:10px; color:var(--dim)">
-          <b style="color:var(--text)">YOUR COORDS:</b>
+          <b style="color:var(--text)">YOUR COORDS:</b> <button onclick="fetchPlayerPos()" id="posBtn" disabled class="btn-sm" style="font-size:7px;padding:4px 8px;margin-left:6px;background:var(--border);color:var(--dim)">📍 AUTO DETECT</button>
           <span style="font-size:9px;color:var(--dim);width:100%;margin-bottom:4px">Enter your XYZ from top of Minecraft screen:</span></div><div style="display:flex;gap:8px;align-items:center;font-size:10px;color:var(--dim);padding:0 14px 10px;flex-wrap:wrap"><span>X</span><input id="offX" type="number" value="0" style="width:54px;background:#111;border:1px solid var(--border);color:var(--text);padding:4px 6px;font-family:inherit;font-size:11px">
           <span>Y</span><input id="offY" type="number" value="0" style="width:54px;background:#111;border:1px solid var(--border);color:var(--text);padding:4px 6px;font-family:inherit;font-size:11px">
           <span>Z</span><input id="offZ" type="number" value="0" style="width:54px;background:#111;border:1px solid var(--border);color:var(--text);padding:4px 6px;font-family:inherit;font-size:11px">
@@ -1907,6 +1907,8 @@ function wsConnect() {
     ws.onmessage = (e) => {
       try {
         const d = JSON.parse(e.data);
+        // Check for position response first
+        if(handlePosResponse(e.data)) return;
         if(d.__relay === 'minecraft_connected' || d.__relay === 'minecraft_ready') {
           wsReady = true; mcReady = true;
           wsSetStatus('connected', '<b style="color:var(--accent)">✓ Minecraft connected!</b> Ready to build');
@@ -1919,6 +1921,9 @@ function wsConnect() {
           log('ok', 'Subscribed! Ready to build.');
           if(parsedStructure) document.getElementById('liveBtn').disabled = false;
           document.getElementById('testBtn').disabled = false;
+          document.getElementById('posBtn').disabled = false;
+          // Auto-fetch position on connect
+          setTimeout(fetchPlayerPos, 500);
         } else if(d.__relay === 'minecraft_disconnected') {
           mcReady = false;
           wsSetStatus('mc-waiting', '<b style="color:var(--gold)">Relay ready</b> — Minecraft disconnected');
@@ -1950,6 +1955,118 @@ function wsDisconnect() {
   if(ws) ws.close();
   ws = null; wsReady = false; mcReady = false;
   wsSetStatus('', '<b>Disconnected</b>');
+}
+
+// ============================================================
+// Auto-detect player position via WebSocket
+// ============================================================
+let posRequestId = null;
+
+function fetchPlayerPos() {
+  if(!wsReady) { showNotif('Connect to Minecraft first!', true); return; }
+  const btn = document.getElementById('posBtn');
+  btn.textContent = '⏳ DETECTING...';
+  btn.disabled = true;
+
+  // Store request ID so we can match the response
+  posRequestId = '11111111-1111-1111-1111-111111111111';
+
+  const msg = JSON.stringify({
+    header: {
+      version: 1,
+      requestId: posRequestId,
+      messagePurpose: 'commandRequest',
+      messageType: 'commandRequest'
+    },
+    body: {
+      version: 1,
+      commandLine: 'getlocalplayername'
+    }
+  });
+  ws.send(msg);
+
+  // Also try querying position directly
+  const posMsg = JSON.stringify({
+    header: {
+      version: 1,
+      requestId: '22222222-2222-2222-2222-222222222222',
+      messagePurpose: 'commandRequest',
+      messageType: 'commandRequest'
+    },
+    body: {
+      version: 1,
+      commandLine: 'querytarget @s'
+    }
+  });
+  ws.send(posMsg);
+
+  // Timeout fallback
+  setTimeout(() => {
+    if(btn.textContent === '⏳ DETECTING...') {
+      btn.textContent = '📍 AUTO DETECT';
+      btn.disabled = false;
+      showNotif('Could not detect — enter coords manually', true);
+      log('warn', 'Position detection timed out. Try entering coords manually.');
+    }
+  }, 3000);
+}
+
+function handlePosResponse(data) {
+  try {
+    const d = JSON.parse(data);
+    const purpose = d.header?.messagePurpose;
+    const reqId = d.header?.requestId;
+    const body = d.body;
+
+    // querytarget response contains position
+    if(reqId === '22222222-2222-2222-2222-222222222222' && body?.statusCode === 0) {
+      const details = body.details || body.statusMessage || '';
+      log('info', 'Pos response: ' + details.slice(0,100));
+
+      // Try to parse JSON details from querytarget
+      try {
+        const parsed = JSON.parse(details);
+        const target = Array.isArray(parsed) ? parsed[0] : parsed;
+        const pos = target?.position || target?.pos;
+        if(pos) {
+          const x = Math.floor(pos.x ?? pos[0]);
+          const y = Math.floor(pos.y ?? pos[1]);
+          const z = Math.floor(pos.z ?? pos[2]);
+          applyPosition(x, y, z);
+          return true;
+        }
+      } catch(e) {
+        // Try regex parse from statusMessage
+        const match = details.match(/x=([\d.-]+).*?y=([\d.-]+).*?z=([\d.-]+)/i)
+                   || details.match(/([\d.-]+),\s*([\d.-]+),\s*([\d.-]+)/);
+        if(match) {
+          applyPosition(Math.floor(parseFloat(match[1])),
+                        Math.floor(parseFloat(match[2])),
+                        Math.floor(parseFloat(match[3])));
+          return true;
+        }
+      }
+    }
+
+    // Try to get coords from any response with position data
+    if(body?.position) {
+      applyPosition(Math.floor(body.position.x), Math.floor(body.position.y), Math.floor(body.position.z));
+      return true;
+    }
+
+  } catch(e) {}
+  return false;
+}
+
+function applyPosition(x, y, z) {
+  document.getElementById('offX').value = x;
+  document.getElementById('offY').value = y;
+  document.getElementById('offZ').value = z;
+  const btn = document.getElementById('posBtn');
+  btn.textContent = '✅ ' + x + ',' + y + ',' + z;
+  btn.disabled = false;
+  log('ok', 'Position detected: ' + x + ', ' + y + ', ' + z);
+  showNotif('Position set: ' + x + ', ' + y + ', ' + z);
 }
 
 // ============================================================
@@ -2204,7 +2321,8 @@ async function startLiveBuild() {
 
   const speedIdx = parseInt(document.getElementById('buildSpeed').value) - 1;
   const bps = SPEED_PRESETS[speedIdx].bps;
-  const delay = Math.max(0, Math.round(1000 / bps)); // ms per block
+  // Minimum 50ms delay between blocks to avoid overwhelming Minecraft
+  const delay = Math.max(50, Math.round(1000 / bps));
 
   document.getElementById('liveBtn').style.display = 'none';
   document.getElementById('stopBtn').style.display = '';
@@ -2212,53 +2330,82 @@ async function startLiveBuild() {
   prog.style.display = 'block';
   document.getElementById('bTotal').textContent = blocks.length;
 
-  log('ok', 'Live build started! ' + blocks.length + ' blocks @ ~' + bps + ' blocks/sec');
-  log('info', 'Origin: ' + ox + ',' + oy + ',' + oz);
+  log('ok', 'Build started! ' + blocks.length + ' blocks @ ' + delay + 'ms/block');
 
-  let placed = 0;
-  const startTime = Date.now();
-
-  // Sort blocks bottom-up so we build floor first
+  // Sort bottom-up so floors build before walls
   const sorted = [...blocks].sort((a, b) => a.y - b.y);
 
+  let placed = 0;
+  let failed = 0;
+  const startTime = Date.now();
+
+  // Listen for MC responses to track success
+  const origOnMessage = ws.onmessage;
+  let lastResponse = null;
+  ws.onmessage = (e) => {
+    try {
+      const d = JSON.parse(e.data);
+      if(d.__relay) {
+        // relay messages
+        if(d.__relay === 'minecraft_disconnected') {
+          buildStop = true;
+          log('err', 'Minecraft disconnected during build!');
+        }
+        return;
+      }
+      lastResponse = d;
+      const code = d.body?.statusCode;
+      if(code !== undefined && code !== 0) {
+        failed++;
+        // Don't log every failure — just count
+      }
+    } catch(_){}
+  };
+
   for(let i = 0; i < sorted.length; i++) {
-    if(buildStop) break;
+    if(buildStop || !ws || ws.readyState !== WebSocket.OPEN) break;
+
     const b = sorted[i];
-    // Always use absolute world coordinates
     const blockName = toBedrockName(b.name);
     const cmd = 'setblock ' + (b.x+ox) + ' ' + (b.y+oy) + ' ' + (b.z+oz) + ' ' + blockName;
-    if(!wsSend(cmd)) {
-      log('err', 'Connection lost at block ' + i);
-      break;
-    }
+    wsSend(cmd);
     placed++;
-    // Update UI every 20 blocks
-    if(placed % 20 === 0 || placed === sorted.length) {
+
+    // Update UI every 10 blocks
+    if(placed % 10 === 0 || placed === sorted.length) {
       const pct = (placed / sorted.length * 100).toFixed(1);
       document.getElementById('buildFill').style.width = pct + '%';
       document.getElementById('bPlaced').textContent = placed;
       const elapsed = (Date.now() - startTime) / 1000;
       const rate = placed / elapsed;
-      const remaining = (sorted.length - placed) / rate;
+      const remaining = (sorted.length - placed) / Math.max(rate, 0.1);
       document.getElementById('bEta').textContent = remaining > 0 ? Math.ceil(remaining) + 's' : 'done!';
     }
-    if(delay > 0) await new Promise(r => setTimeout(r, delay));
+
+    // Yield to browser every 10 blocks to keep UI responsive
+    if(placed % 10 === 0) await new Promise(r => setTimeout(r, 0));
+
+    // Enforced delay between commands
+    await new Promise(r => setTimeout(r, delay));
   }
+
+  // Restore original message handler
+  ws.onmessage = origOnMessage;
 
   buildRunning = false;
   document.getElementById('liveBtn').style.display = '';
   document.getElementById('stopBtn').style.display = 'none';
 
   if(!buildStop) {
-    log('ok', '✅ Build complete! ' + placed + ' blocks placed.');
-    showNotif('Build complete! ' + placed + ' blocks placed.');
+    const msg = 'Build complete! ' + placed + ' blocks sent' + (failed > 0 ? ', ' + failed + ' skipped' : '');
+    log('ok', '✅ ' + msg);
+    showNotif(msg);
     document.getElementById('bEta').textContent = 'done!';
   } else {
-    log('warn', 'Build stopped at ' + placed + '/' + sorted.length + ' blocks.');
-    showNotif('Build stopped.', true);
+    log('warn', 'Build stopped at ' + placed + '/' + sorted.length);
+    showNotif('Build stopped at ' + placed + ' blocks', true);
   }
 }
-
 function stopLiveBuild() {
   buildStop = true;
   document.getElementById('stopBtn').style.display = 'none';
