@@ -771,6 +771,7 @@
 
           <button class="btn btn-primary" id="liveBtn" disabled onclick="startLiveBuild()" style="margin-top:10px">▶ START AUTO BUILD</button>
           <button class="btn btn-secondary" id="stopBtn" onclick="stopLiveBuild()" style="display:none;margin-top:6px">⏹ STOP</button>
+          <button class="btn btn-secondary" id="testBtn" disabled onclick="testBlock()" style="margin-top:6px">🧱 TEST — PLACE 1 BLOCK</button>
         </div>
 
                 <!-- TAB: Behavior Pack -->
@@ -1912,6 +1913,7 @@ function wsConnect() {
           log('ok', '🎮 Minecraft is connected! Hit START AUTO BUILD.');
           showNotif('Minecraft connected!');
           if(parsedStructure) document.getElementById('liveBtn').disabled = false;
+          document.getElementById('testBtn').disabled = false;
         } else if(d.__relay === 'minecraft_disconnected') {
           mcReady = false;
           wsSetStatus('mc-waiting', '<b style="color:var(--gold)">Relay ready</b> — Minecraft disconnected');
@@ -1947,6 +1949,7 @@ function wsDisconnect() {
 
 function wsSend(cmd) {
   if(!ws || ws.readyState !== WebSocket.OPEN) return false;
+  // Bedrock WebSocket API — exact format required
   const msg = JSON.stringify({
     header: {
       version: 1,
@@ -1962,6 +1965,15 @@ function wsSend(cmd) {
   });
   ws.send(msg);
   return true;
+}
+
+function testBlock() {
+  if(!wsReady) { showNotif('Not connected!', true); return; }
+  // Place a single glowstone at relative position ~0 ~1 ~0 (1 block above player)
+  const cmd = 'setblock ~0 ~1 ~0 glowstone';
+  const ok = wsSend(cmd);
+  log(ok ? 'ok' : 'err', ok ? 'Test sent: ' + cmd : 'Send failed — not connected');
+  if(ok) showNotif('Test block sent! Look above you in Minecraft');
 }
 
 async function startLiveBuild() {
@@ -1996,7 +2008,15 @@ async function startLiveBuild() {
   for(let i = 0; i < sorted.length; i++) {
     if(buildStop) break;
     const b = sorted[i];
-    const cmd = 'setblock ~' + (b.x+ox) + ' ~' + (b.y+oy) + ' ~' + (b.z+oz) + ' ' + b.name + ' replace';
+    // Use absolute coords if offset given, relative ~ if zero
+    let cmd;
+    if(ox === 0 && oy === 0 && oz === 0) {
+      // Relative to player position
+      cmd = 'setblock ~' + b.x + ' ~' + b.y + ' ~' + b.z + ' ' + b.name;
+    } else {
+      // Absolute world coordinates
+      cmd = 'setblock ' + (b.x+ox) + ' ' + (b.y+oy) + ' ' + (b.z+oz) + ' ' + b.name;
+    }
     if(!wsSend(cmd)) {
       log('err', 'Connection lost at block ' + i);
       break;
